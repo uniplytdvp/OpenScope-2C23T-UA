@@ -34,6 +34,7 @@ void dmm_reenter(uint8_t mode) { (void)mode; }
 void dmm_set_mode(uint8_t mode) { (void)mode; }
 void settings_note(const settings_state_t *settings) { (void)settings; }
 void settings_flush(void) {}
+uint8_t settings_load(settings_state_t *state) { (void)state; return 0; }
 void board_buzzer_set_volume(uint8_t level) { (void)level; }
 void board_backlight_set_level(uint8_t level) { (void)level; }
 boot_export_result_t usb_msc_export_bootloader(const char *version,

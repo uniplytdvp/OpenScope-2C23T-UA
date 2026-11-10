@@ -115,6 +115,7 @@ static void settings_defaults(settings_state_t *settings) {
     settings->bode_start_hz = 100u;
     settings->bode_stop_hz = 100000u;
     settings->bode_steps = 40u;
+    settings->language = 0;
     for (uint8_t ch = 0; ch < SETTINGS_SCOPE_CHANNEL_COUNT; ++ch) {
         settings->scope_ch_enabled[ch] = 1;
         settings->scope_probe_x10[ch] = 0;
@@ -170,6 +171,7 @@ static void settings_copy(settings_state_t *dst, const settings_state_t *src) {
     dst->bode_start_hz = src->bode_start_hz;
     dst->bode_stop_hz = src->bode_stop_hz;
     dst->bode_steps = src->bode_steps;
+    dst->language = src->language;
     for (uint8_t ch = 0; ch < SETTINGS_SCOPE_CHANNEL_COUNT; ++ch) {
         dst->scope_ch_enabled[ch] = src->scope_ch_enabled[ch];
         dst->scope_probe_x10[ch] = src->scope_probe_x10[ch];
@@ -227,7 +229,8 @@ static uint8_t settings_equal(const settings_state_t *a, const settings_state_t 
         a->siggen_fm_freq_hz != b->siggen_fm_freq_hz ||
         a->bode_start_hz != b->bode_start_hz ||
         a->bode_stop_hz != b->bode_stop_hz ||
-        a->bode_steps != b->bode_steps) {
+        a->bode_steps != b->bode_steps ||
+        a->language != b->language) {
         return 0;
     }
     for (uint8_t ch = 0; ch < SETTINGS_SCOPE_CHANNEL_COUNT; ++ch) {
@@ -264,6 +267,9 @@ static void settings_clamp(settings_state_t *settings) {
     }
     if (settings->sleep_enabled >= SETTINGS_SLEEP_COUNT) {
         settings->sleep_enabled = 0;
+    }
+    if (settings->language >= 2u) {
+        settings->language = 0;
     }
     if (settings->scope_timebase >= SETTINGS_SCOPE_TIMEBASE_COUNT) {
         settings->scope_timebase = SETTINGS_SCOPE_TIMEBASE_DEFAULT;
@@ -587,6 +593,7 @@ static uint8_t settings_state_record_valid(uint32_t record, settings_state_t *se
         settings->siggen_sweep_mode = (uint8_t)(payload & 3u);
         settings->siggen_fm_mode    = (uint8_t)((payload >> 2) & 1u);
         settings->siggen_fm_source  = (uint8_t)((payload >> 3) & 3u);
+        settings->language          = (uint8_t)((payload >> 5) & 3u);
         return 1;
     } else if (type == SETTINGS_STATE_SIGGEN_SWEEP_MS_LO) {
         settings->siggen_sweep_ms = (settings->siggen_sweep_ms & 0xFFFF0000u) | payload;
@@ -698,7 +705,8 @@ static void settings_write_state_records(uint32_t *addr, const settings_state_t 
 
     payload = (uint16_t)((settings->siggen_sweep_mode & 3u) |
                          ((settings->siggen_fm_mode & 1u) << 2) |
-                         ((settings->siggen_fm_source & 3u) << 3));
+                         ((settings->siggen_fm_source & 3u) << 3) |
+                         ((settings->language & 3u) << 5));
     flash_program_word(*addr, settings_state_record(SETTINGS_STATE_SIGGEN_SWEEP_FM, payload));
     *addr += 4u;
 

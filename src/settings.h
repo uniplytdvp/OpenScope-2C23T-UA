@@ -87,6 +87,7 @@ typedef struct {
     uint32_t bode_start_hz;
     uint32_t bode_stop_hz;
     uint8_t bode_steps;
+    uint8_t language;            // 0 = LANG_EN, 1 = LANG_UA
 
 } settings_state_t;
 

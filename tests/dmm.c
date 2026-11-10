@@ -281,6 +281,162 @@ static void test_packet_boundaries(void) {
     assert(rx_ready && memcmp((const void *)rx_pending, frame, 9) == 0);
 }
 
+static void test_dmm_i18n_units_and_labels(void) {
+    i18n_set_language(LANG_EN);
+    assert(strcmp(i18n_dmm_unit("V"), "V") == 0);
+    assert(strcmp(i18n_dmm_unit("MV"), "mV") == 0);
+    assert(strcmp(i18n_dmm_unit("A"), "A") == 0);
+    assert(strcmp(i18n_dmm_unit("MA"), "mA") == 0);
+    assert(strcmp(i18n_dmm_unit("UA"), "µA") == 0);
+    assert(strcmp(i18n_dmm_unit("OHM"), "Ω") == 0);
+    assert(strcmp(i18n_dmm_unit("KOHM"), "kΩ") == 0);
+    assert(strcmp(i18n_dmm_unit("MOHM"), "MΩ") == 0);
+    assert(strcmp(i18n_dmm_unit("F"), "F") == 0);
+    assert(strcmp(i18n_dmm_unit("MF"), "mF") == 0);
+    assert(strcmp(i18n_dmm_unit("UF"), "µF") == 0);
+    assert(strcmp(i18n_dmm_unit("NF"), "nF") == 0);
+    assert(strcmp(i18n_dmm_unit("DEG"), "°C") == 0);
+    assert(strcmp(i18n_str(I18N_STR_OPEN), "OPEN") == 0);
+    assert(strcmp(i18n_str(I18N_STR_LIVE), "LIVE") == 0);
+
+    // Test display values in EN
+    setup(3); // Resistance mode
+    strcpy(dmm_value, "OPEN");
+    dmm_valid = 1;
+    assert(strcmp(dmm_live_display_value(), "OPEN") == 0);
+
+    setup(6); // Live wire mode
+    dmm_valid = 1;
+    assert(strcmp(dmm_live_display_value(), "LIVE") == 0);
+
+    // Test Ukrainian translations
+    i18n_set_language(LANG_UA);
+    assert(strcmp(i18n_dmm_unit("V"), "В") == 0);
+    assert(strcmp(i18n_dmm_unit("MV"), "мВ") == 0);
+    assert(strcmp(i18n_dmm_unit("A"), "А") == 0);
+    assert(strcmp(i18n_dmm_unit("MA"), "мА") == 0);
+    assert(strcmp(i18n_dmm_unit("UA"), "µА") == 0);
+    assert(strcmp(i18n_dmm_unit("OHM"), "Ω") == 0);
+    assert(strcmp(i18n_dmm_unit("KOHM"), "кΩ") == 0);
+    assert(strcmp(i18n_dmm_unit("MOHM"), "МΩ") == 0);
+    assert(strcmp(i18n_dmm_unit("F"), "Ф") == 0);
+    assert(strcmp(i18n_dmm_unit("MF"), "мФ") == 0);
+    assert(strcmp(i18n_dmm_unit("UF"), "µФ") == 0);
+    assert(strcmp(i18n_dmm_unit("NF"), "nФ") == 0);
+    assert(strcmp(i18n_dmm_unit("DEG"), "°C") == 0);
+    assert(strcmp(i18n_str(I18N_STR_OPEN), "ОБРИВ") == 0);
+    assert(strcmp(i18n_str(I18N_STR_LIVE), "ФАЗА") == 0);
+    assert(strcmp(i18n_str(I18N_STR_AUTO), "АВТО") == 0);
+
+    // Test display values in UA
+    setup(3);
+    strcpy(dmm_value, "OPEN");
+    dmm_valid = 1;
+    assert(strcmp(dmm_live_display_value(), "ОБРИВ") == 0);
+
+    setup(6);
+    dmm_valid = 1;
+    assert(strcmp(dmm_live_display_value(), "ФАЗА") == 0);
+
+    setup(0);
+    strcpy(dmm_value, "AUTO");
+    dmm_valid = 1;
+    assert(strcmp(dmm_live_display_value(), "АВТО") == 0);
+
+    // Test dmm_display_unit reflects localized unit
+    setup(10); // DC HI mode, mA
+    strcpy(dmm_unit, "MA");
+    dmm_valid = 1;
+    assert(strcmp(dmm_display_unit(), "мА") == 0);
+
+    i18n_set_language(LANG_EN);
+    assert(strcmp(dmm_display_unit(), "mA") == 0);
+    setup(0);
+    strcpy(dmm_value, "AUTO");
+    dmm_valid = 1;
+    assert(strcmp(dmm_live_display_value(), "AUTO") == 0);
+}
+
+void lcd_render(lcd_render_fn_t fn, void *ctx) { (void)fn; (void)ctx; }
+uint32_t load_counter_read(void) { return 0; }
+uint32_t load_counter_elapsed(uint32_t start, uint32_t end) { return end - start; }
+
+static void test_dmm_stats_and_ch1_keys(void) {
+    // AUTO mode should not accumulate stats
+    setup(DMM_MODE_AUTO);
+    dmm_stats_reset();
+    dmm_view_mode = DMM_VIEW_LIVE;
+    dmm_valid = dmm_numeric_valid = 1;
+    strcpy(dmm_unit, "V");
+    strcpy(dmm_value, "5.000");
+    dmm_stats_update();
+    assert(!dmm_stats.valid);
+
+    // DCV mode: near-zero readings are ignored, min waits for settle
+    setup(DMM_MODE_DCV);
+    dmm_stats_reset();
+    dmm_view_mode = DMM_VIEW_LIVE;
+    dmm_valid = dmm_numeric_valid = 1;
+    strcpy(dmm_unit, "V");
+    strcpy(dmm_value, "0.000");
+    dmm_stats_update();
+    assert(!dmm_stats.valid);
+
+    // Sample 1 (rising transient when probe touches): max tracks, min not yet latched
+    strcpy(dmm_value, "2.100");
+    dmm_stats_update();
+    assert(dmm_stats.valid && !dmm_stats.min_valid);
+    assert(dmm_stats.max_value == 2100);
+
+    // Sample 2 (rising): max updates, min still waiting
+    strcpy(dmm_value, "4.950");
+    dmm_stats_update();
+    assert(dmm_stats.valid && !dmm_stats.min_valid);
+    assert(dmm_stats.max_value == 4950);
+
+    // Sample 3 (settled): min_valid becomes 1, min=5.000, max=5.000
+    strcpy(dmm_value, "5.000");
+    dmm_stats_update();
+    assert(dmm_stats.valid && dmm_stats.min_valid);
+    assert(dmm_stats.min_value == 5000);
+    assert(dmm_stats.max_value == 5000);
+
+    // Sample 4 & 5: track min and max
+    strcpy(dmm_value, "4.850");
+    dmm_stats_update();
+    strcpy(dmm_value, "5.150");
+    dmm_stats_update();
+    assert(dmm_stats.min_value == 4850);
+    assert(dmm_stats.max_value == 5150);
+
+    // Lifting probes (0.000 V) preserves min and max
+    strcpy(dmm_value, "0.000");
+    dmm_stats_update();
+    assert(dmm_stats.valid && dmm_stats.min_valid);
+    assert(dmm_stats.min_value == 4850);
+    assert(dmm_stats.max_value == 5150);
+
+    // Long press CH1 cycles main display: LIVE -> MIN -> MAX -> MAX-MIN -> LIVE
+    strcpy(dmm_value, "5.010");
+    assert(strcmp(dmm_display_value(), "5.010") == 0);
+    ui_handle_keys(KEY_CH1_LONG);
+    assert(dmm_view_mode == DMM_VIEW_MIN);
+    assert(strcmp(dmm_display_value(), "4.850") == 0);
+    ui_handle_keys(KEY_CH1_LONG);
+    assert(dmm_view_mode == DMM_VIEW_MAX);
+    assert(strcmp(dmm_display_value(), "5.150") == 0);
+    ui_handle_keys(KEY_CH1_LONG);
+    assert(dmm_view_mode == DMM_VIEW_MAX_MIN);
+    assert(strcmp(dmm_display_value(), "0.300") == 0);
+    ui_handle_keys(KEY_CH1_LONG);
+    assert(dmm_view_mode == DMM_VIEW_LIVE);
+    assert(strcmp(dmm_display_value(), "5.010") == 0);
+
+    // Short press CH1 resets statistics
+    ui_handle_keys(KEY_CH1);
+    assert(!dmm_stats.valid && !dmm_stats.min_valid);
+}
+
 int main(void) {
     test_stock_decoding();
     test_all_numeric_digits();
@@ -289,6 +445,8 @@ int main(void) {
     test_synthetic_readings();
     test_diode_thresholds();
     test_packet_boundaries();
+    test_dmm_i18n_units_and_labels();
+    test_dmm_stats_and_ch1_keys();
     assert(strcmp(settings_value_text(SETTINGS_ROW_COUNT - 1u, NULL), EXPECTED_FW_VERSION) == 0);
     puts("DMM decoding, display, REL, continuity and UART framing tests passed");
     return 0;

@@ -16,8 +16,18 @@ SCOPE_ANALOG_CONFIG ?= 1
 SCOPE_ATTENUATOR_CONFIG ?= 1
 
 CLANG ?= clang
-RUST_LLD := $(shell find $(HOME)/.rustup/toolchains -path '*/bin/rust-lld' | head -1)
+PYTHON ?= $(shell command -v python 2>/dev/null || command -v python3 2>/dev/null || echo python)
+LD_LLD ?= $(shell command -v ld.lld 2>/dev/null)
+RUST_LLD := $(shell find $(HOME)/.rustup/toolchains -path '*/bin/rust-lld' 2>/dev/null | head -1)
 LLD_DIR := $(BUILD)/lld
+
+ifeq ($(LD_LLD),)
+LLD_DEP := $(LLD_DIR)/ld.lld
+LLD_FLAG := -B$(LLD_DIR)
+else
+LLD_DEP :=
+LLD_FLAG :=
+endif
 
 CFLAGS := \
 	-target armv7em-none-eabi \
@@ -31,10 +41,12 @@ CFLAGS := \
 	-ffunction-sections \
 	-fno-unwind-tables \
 	-fno-asynchronous-unwind-tables \
-	-Os \
+	-Oz \
 	-Wall \
 	-Wextra \
 	-Werror \
+	-Wno-unused-but-set-variable \
+	-Wno-unused-but-set-global \
 	-I src \
 	-DAPP_BASE_ADDR=$(APP_BASE)u \
 	-DAPP_FLASH_SIZE_BYTES=$(APP_FLASH_SIZE)u \
@@ -55,7 +67,7 @@ LDFLAGS := \
 	-mthumb \
 	-nostdlib \
 	-fuse-ld=lld \
-	-B$(LLD_DIR) \
+	$(LLD_FLAG) \
 	-Wl,-T,$(BUILD)/linker.ld \
 	-Wl,--gc-sections \
 	-Wl,-Map,$(BUILD)/$(PROJECT).map
@@ -68,10 +80,16 @@ SRCS += src/fpga_bitstream.c
 endif
 OBJS := $(patsubst src/%.c,$(BUILD)/%.o,$(SRCS))
 
-HOST_TEST_FLAGS := -std=c11 -O2 -Wall -Wextra -Werror -ffunction-sections -fdata-sections -fsanitize=address,undefined
-ifeq ($(shell uname -s),Darwin)
+HOST_TEST_FLAGS := -std=c11 -O2 -Wall -Wextra -Werror -ffunction-sections -fdata-sections
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+HOST_TEST_FLAGS += -fsanitize=address,undefined
 HOST_TEST_LINK := -Wl,-dead_strip
+else ifneq ($(findstring MINGW,$(UNAME_S))$(findstring MSYS,$(UNAME_S))$(findstring NT,$(UNAME_S)),)
+HOST_TEST_FLAGS += -D_CRT_SECURE_NO_WARNINGS -Wno-deprecated-declarations -Wno-sign-compare
+HOST_TEST_LINK := -Wl,/FORCE:UNRESOLVED
 else
+HOST_TEST_FLAGS += -fsanitize=address,undefined
 HOST_TEST_LINK := -Wl,--gc-sections -lm
 endif
 HOST_TEST_BINS := $(BUILD_ROOT)/tests/bootloader-old $(BUILD_ROOT)/tests/bootloader-hw4 \
@@ -157,11 +175,11 @@ $(BUILD)/%.o: src/%.c
 	@mkdir -p $(BUILD)
 	$(CLANG) $(CFLAGS) -c $< -o $@
 
-$(BUILD)/$(PROJECT).elf: $(OBJS) $(BUILD)/linker.ld $(LLD_DIR)/ld.lld
+$(BUILD)/$(PROJECT).elf: $(OBJS) $(BUILD)/linker.ld $(LLD_DEP)
 	$(CLANG) $(LDFLAGS) $(OBJS) -o $@
 
 $(BUILD)/$(PROJECT).bin: $(BUILD)/$(PROJECT).elf tools/elf2bin.py
-	python3 tools/elf2bin.py $< $@ $(APP_BASE)
+	$(PYTHON) tools/elf2bin.py $< $@ $(APP_BASE)
 
 clean:
 	rm -rf $(BUILD_ROOT)

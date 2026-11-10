@@ -1,0 +1,6 @@
+FNIRSI bootloader backup
+Build target: HW4.0
+Firmware: v2026.11.1
+Start: 0x08000000
+Size: 0x00007000
+CRC32: 2ACD97AB

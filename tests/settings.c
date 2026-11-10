@@ -56,8 +56,36 @@ static void test_split_values(void) {
     assert(settings.scope_trigger_level == 12u);
 }
 
+static void test_language_persistence(void) {
+    settings_state_t settings;
+
+    memset(flash, 0xFF, sizeof(flash));
+    record_count = 0;
+
+    // Simulate saving language = 1 (LANG_UA) in state record
+    uint16_t payload = (1u << 5) | (2u << 3) | (1u << 2) | (1u);
+    put_record(SETTINGS_STATE_SIGGEN_SWEEP_FM, payload);
+
+    assert(settings_load(&settings));
+    assert(settings.language == 1);
+    assert(settings.siggen_sweep_mode == 1);
+    assert(settings.siggen_fm_mode == 1);
+    assert(settings.siggen_fm_source == 2);
+
+    // Test with language = 0 (LANG_EN)
+    memset(flash, 0xFF, sizeof(flash));
+    record_count = 0;
+    payload = (0u << 5) | (1u);
+    put_record(SETTINGS_STATE_SIGGEN_SWEEP_FM, payload);
+
+    assert(settings_load(&settings));
+    assert(settings.language == 0);
+    assert(settings.siggen_sweep_mode == 1);
+}
+
 int main(void) {
     test_split_values();
+    test_language_persistence();
     printf("settings: split 32-bit records restore without partial clamping passed\n");
     return 0;
 }

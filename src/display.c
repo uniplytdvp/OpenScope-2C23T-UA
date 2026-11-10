@@ -531,16 +531,39 @@ void lcd_render(lcd_render_fn_t render, void *ctx) {
     dirty_reset();
 }
 
+static uint16_t utf8_next_codepoint(const char **str) {
+    const uint8_t *p = (const uint8_t *)*str;
+    if (!*p) return 0;
+    uint32_t cp = *p++;
+    if (cp < 0x80) {
+        *str = (const char *)p;
+        return (uint16_t)cp;
+    }
+    if ((cp & 0xE0) == 0xC0) {
+        if (*p) {
+            cp = ((cp & 0x1F) << 6) | (*p++ & 0x3F);
+        }
+    } else if ((cp & 0xF0) == 0xE0) {
+        if (*p && *(p + 1)) {
+            cp = ((cp & 0x0F) << 12) | ((*p & 0x3F) << 6) | (*(p + 1) & 0x3F);
+            p += 2;
+        }
+    }
+    *str = (const char *)p;
+    return (uint16_t)cp;
+}
+
 uint16_t lcd_text_width(const char *text, uint8_t scale) {
     uint16_t width = 0;
-    while (*text++) {
+    while (*text) {
+        utf8_next_codepoint(&text);
         width = (uint16_t)(width + 6u * scale);
     }
     return width;
 }
 
-static void lcd_char(uint16_t x, uint16_t y, char c, uint16_t fg, uint16_t bg, uint8_t scale) {
-    const uint8_t *glyph = font5x7_get(c);
+static void lcd_char_codepoint(uint16_t x, uint16_t y, uint16_t cp, uint16_t fg, uint16_t bg, uint8_t scale) {
+    const uint8_t *glyph = font5x7_get_codepoint(cp);
     lcd_rect(x, y, (uint16_t)(6u * scale), (uint16_t)(8u * scale), bg);
     for (uint8_t row = 0; row < 7; ++row) {
         for (uint8_t col = 0; col < 5; ++col) {
@@ -551,8 +574,8 @@ static void lcd_char(uint16_t x, uint16_t y, char c, uint16_t fg, uint16_t bg, u
     }
 }
 
-static void lcd_char_transparent(uint16_t x, uint16_t y, char c, uint16_t fg, uint8_t scale) {
-    const uint8_t *glyph = font5x7_get(c);
+static void lcd_char_transparent_codepoint(uint16_t x, uint16_t y, uint16_t cp, uint16_t fg, uint8_t scale) {
+    const uint8_t *glyph = font5x7_get_codepoint(cp);
     for (uint8_t row = 0; row < 7; ++row) {
         for (uint8_t col = 0; col < 5; ++col) {
             if (glyph[col] & (1u << row)) {
@@ -564,14 +587,16 @@ static void lcd_char_transparent(uint16_t x, uint16_t y, char c, uint16_t fg, ui
 
 void lcd_text(uint16_t x, uint16_t y, const char *text, uint16_t fg, uint16_t bg, uint8_t scale) {
     while (*text) {
-        lcd_char(x, y, *text++, fg, bg, scale);
+        uint16_t cp = utf8_next_codepoint(&text);
+        lcd_char_codepoint(x, y, cp, fg, bg, scale);
         x = (uint16_t)(x + 6u * scale);
     }
 }
 
 void lcd_text_transparent(uint16_t x, uint16_t y, const char *text, uint16_t fg, uint8_t scale) {
     while (*text) {
-        lcd_char_transparent(x, y, *text++, fg, scale);
+        uint16_t cp = utf8_next_codepoint(&text);
+        lcd_char_transparent_codepoint(x, y, cp, fg, scale);
         x = (uint16_t)(x + 6u * scale);
     }
 }

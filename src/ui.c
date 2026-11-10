@@ -13,6 +13,8 @@
 #include "bootloader.h"
 #include "fft.h"
 #include "arb_csv.h"
+#include "i18n.h"
+#include "i18n.c"
 
 #include <stdint.h>
 
@@ -185,8 +187,10 @@ typedef struct {
 
 typedef struct {
     uint8_t valid;
+    uint8_t min_valid;
     uint8_t mode;
     uint8_t decimals;
+    uint8_t settle_count;
     uint8_t zero_count;
     uint8_t zero_idle;
     uint16_t count;
@@ -195,6 +199,15 @@ typedef struct {
     int32_t max_value;
     char unit[6];
 } dmm_stats_t;
+
+enum {
+    DMM_VIEW_LIVE = 0,
+    DMM_VIEW_MIN = 1,
+    DMM_VIEW_MAX = 2,
+    DMM_VIEW_MAX_MIN = 3,
+    DMM_VIEW_COUNT = 4,
+    DMM_STATS_MIN_SETTLE_SAMPLES = 3,
+};
 
 enum {
     SCOPE_TRACE_STEP = 3,
@@ -401,6 +414,8 @@ static char dmm_rel_value[12];
 static char dmm_rel_ref_value[10];
 static char dmm_low_current_value[10];
 static char dmm_status_detail[18];
+static char dmm_stat_main_value[12];
+static uint8_t dmm_view_mode;
 static settings_state_t ui_settings;
 
 static void ui_settings_copy(settings_state_t *dst, const settings_state_t *src) {
@@ -447,6 +462,7 @@ static void ui_settings_copy(settings_state_t *dst, const settings_state_t *src)
     dst->bode_start_hz = src->bode_start_hz;
     dst->bode_stop_hz = src->bode_stop_hz;
     dst->bode_steps = src->bode_steps;
+    dst->language = src->language;
     for (uint8_t ch = 0; ch < SETTINGS_SCOPE_CHANNEL_COUNT; ++ch) {
         dst->scope_ch_enabled[ch] = src->scope_ch_enabled[ch];
         dst->scope_probe_x10[ch] = src->scope_probe_x10[ch];
@@ -480,9 +496,9 @@ enum {
     SCOPE_STUB_FRAME_MS = 90,
     DMM_FAST_RENDER_MS = 80,
     DMM_STATS_ZERO_RESET_SAMPLES = 8,
-    SETTINGS_ROW_COUNT = 6,
-    SETTINGS_SELECTABLE_COUNT = 5,
-    SETTINGS_BOOT_EXPORT_ROW = 4,
+    SETTINGS_ROW_COUNT = 7,
+    SETTINGS_SELECTABLE_COUNT = 6,
+    SETTINGS_BOOT_EXPORT_ROW = 5,
     SETTINGS_GRID_COLUMNS = 3,
     GEN_PREVIEW_CYCLES = 3,
     GEN_DEFERRED_APPLY_MS = 100,
@@ -583,16 +599,6 @@ enum {
     SCOPE_MEASURE_COUNT,
 };
 
-static const char *const dmm_mode_names[] = {
-    "AUTO DETECT", "DC VOLTAGE", "AC VOLTAGE", "RESISTANCE",
-    "DIODE", "CAPACITANCE", "LIVE WIRE", "CONTINUITY",
-    "TEMPERATURE", "AC HIGH CURR", "DC HIGH CURR",
-    "AC LOW CURR", "DC LOW CURR",
-};
-static const char *const dmm_mode_short[] = {
-    "AUTO", "DCV", "ACV", "RES", "DIODE", "CAP", "LIVE",
-    "CONT", "TEMP", "AC HI", "DC HI", "AC LO", "DC LO",
-};
 static const char *const dmm_values[] = {
     "12.346", "12.346", "0.218", "1.204", "0.624", "0.047",
     "LIVE", "0.000", "23.8", "0.000", "0.000", "0.000", "0.000",
@@ -633,16 +639,8 @@ static const uint16_t scope_vdiv_range_code[] = {1000u, 400u, 200u, 100u, 40u, 2
 enum {
     SCOPE_VDIV_COUNT = sizeof(scope_vdiv_base_mv) / sizeof(scope_vdiv_base_mv[0]),
 };
-static const char *const scope_display_labels[] = {"Y-T", "ROLL", "X-Y"};
 static const char *const scope_display_short[] = {"YT", "ROLL", "XY"};
-static const char *const scope_cursor_labels[] = {"CUR OFF", "T CUR", "Y CUR", "B CUR"};
-static const char *const scope_cursor_short[] = {"OFF", "T", "Y", "B"};
-static const char *const scope_trigger_short[] = {"AUTO", "NORM", "SNGL"};
 static const char *const scope_measure_labels[] = {"VPP", "VMAX", "VMIN", "VAVG", "VRMS", "FREQ"};
-static const char *const scope_param_labels[] = {
-    "VIEW", "ON", "PROBE", "V/DIV", "COUP", "ZERO", "POS", "TIME", "TRIG", "CUR",
-    "SRC", "LEVEL", "MODE", "EDGE", "MEAS",
-};
 static const uint8_t scope_global_param_order[] = {
     SCOPE_PARAM_POSITION,
     SCOPE_PARAM_CURSOR,
@@ -660,16 +658,6 @@ static const uint8_t scope_trigger_param_order[] = {
     SCOPE_PARAM_TRIG_EDGE,
     SCOPE_PARAM_TRIG_TYPE,
     SCOPE_PARAM_TRIG_LEVEL,
-};
-static const char *const gen_wave_labels[] = {
-    "SINE", "RECT", "SAW", "HALF", "FULL",
-    "P STEP", "R STEP", "EXP UP", "EXP DN", "DC",
-    "MULTI AUD", "SINK PLS", "LORENTZ", "TRIANGLE", "NOISE", "ARBITRARY",
-};
-static const char *const gen_wave_short_labels[] = {
-    "SINE", "RECT", "SAW", "HALF", "FULL",
-    "PSTEP", "RSTEP", "EXP+", "EXP-", "DC",
-    "MULTI", "SINK", "LOR", "TRI", "NOISE", "ARBT",
 };
 static const uint8_t gen_wave_order[] = {
     SIGGEN_WAVE_SINE,
@@ -689,13 +677,7 @@ static const uint8_t gen_wave_order[] = {
     SIGGEN_WAVE_SINKER_PULSE,
     SIGGEN_WAVE_LORENTZ,
 };
-static const char *const gen_param_labels[] = {"WAVE", "FREQ", "DUTY", "AMP"};
-static const char *const menu_labels[] = {"MULTIMETER", "OSCILLOSCOPE", "SIGNAL GENERATOR", "SETTINGS"};
-static const char *const settings_row_labels[] = {"BEEP", "DISPLAY", "START", "SLEEP", "BOOTLOADER", "INFO"};
-static const char *const startup_labels[] = {"MENU", "DMM", "SCOPE", "GEN"};
-static const char *const beep_level_labels[] = {"OFF", "LOW", "MEDIUM", "HIGH", "MAX"};
-static const char *const brightness_level_labels[] = {"DIM", "LOW", "MEDIUM", "HIGH", "BRIGHT"};
-static const char *const sleep_labels[] = {"OFF", "10 MIN", "20 MIN", "30 MIN"};
+__attribute__((unused)) static const char *const settings_row_labels[] = {"BEEP", "DISPLAY", "START", "SLEEP", "LANGUAGE", "BOOTLOADER", "INFO"};
 static const uint8_t beep_level_percent[SETTINGS_LEVEL_COUNT] = {0, 10, 50, 75, 100};
 static const uint8_t brightness_level_percent[SETTINGS_LEVEL_COUNT] = {20, 40, 60, 80, 100};
 
@@ -782,22 +764,16 @@ static uint16_t mode_accent(void) {
 
 static const char *mode_title(void) {
     if (ui.mode == UI_MODE_SCOPE) {
-        return "OSCILLOSCOPE";
+        return i18n_str(I18N_STR_OSCILLOSCOPE);
     }
     if (ui.mode == UI_MODE_GEN) {
-        return "SIGNAL GENERATOR";
+        return i18n_str(I18N_STR_SIGNAL_GENERATOR);
     }
-    return "MULTIMETER";
+    return i18n_str(I18N_STR_MULTIMETER);
 }
 
 static const char *mode_short(ui_mode_t mode) {
-    if (mode == UI_MODE_SCOPE) {
-        return "OSC";
-    }
-    if (mode == UI_MODE_GEN) {
-        return "SIG";
-    }
-    return "DMM";
+    return i18n_mode_short((uint8_t)mode);
 }
 
 static void format_percent(char out[5]) {
@@ -1155,22 +1131,22 @@ static void draw_micro_status(uint16_t x, uint16_t y, uint16_t bg) {
 
 static const char *fw_update_status_text(const fw_update_status_t *status) {
     if (status->state == FW_UPDATE_STATE_STAGING) {
-        return "RECEIVING";
+        return i18n_str(I18N_STR_FW_RECEIVING);
     }
     if (status->state == FW_UPDATE_STATE_READY) {
-        return "READY TO FLASH";
+        return i18n_str(I18N_STR_FW_READY);
     }
     if (status->state == FW_UPDATE_STATE_APPLYING) {
-        return "FLASHING";
+        return i18n_str(I18N_STR_FW_FLASHING);
     }
     if (status->state == FW_UPDATE_STATE_ERROR) {
         if (status->error == FW_UPDATE_ERR_VECTOR) {
-            return "NOT A FIRMWARE FILE";
+            return i18n_str(I18N_STR_FW_NOT_FW);
         }
         if (status->error == FW_UPDATE_ERR_RANGE) {
-            return "FILE TOO LARGE";
+            return i18n_str(I18N_STR_FW_TOO_LARGE);
         }
-        return "UPDATE ERROR";
+        return i18n_str(I18N_STR_FW_ERROR);
     }
     return "";
 }
@@ -1195,7 +1171,7 @@ static void draw_fw_update_overlay(uint16_t bg) {
     box_fg = status.state == FW_UPDATE_STATE_ERROR ? C_TEXT : C_BG;
     lcd_rect(x, y, w, h, box_bg);
     lcd_frame(x, y, w, h, status.state == FW_UPDATE_STATE_ERROR ? C_WARN : C_PANEL_2);
-    lcd_text_center(x, (uint16_t)(y + 9u), w, "FIRMWARE UPDATE", box_fg, box_bg, 2);
+    lcd_text_center(x, (uint16_t)(y + 9u), w, i18n_str(I18N_STR_FW_UPDATE), box_fg, box_bg, 2);
     lcd_text_center(x, (uint16_t)(y + 34u), w, fw_update_status_text(&status), box_fg, box_bg, 1);
 
     scope_format_u32(bytes, status.bytes / 1024u);
@@ -1236,13 +1212,13 @@ static void draw_screenshot_overlay(uint16_t bg) {
     lcd_rect(x, y, w, h, box_bg);
     lcd_frame(x, y, w, h, accent);
     lcd_rect(x, y, w, 4, accent);
-    lcd_text_center(x, (uint16_t)(y + 12u), w, "SCREENSHOT", box_fg, box_bg, 2);
+    lcd_text_center(x, (uint16_t)(y + 12u), w, i18n_str(I18N_STR_SCREENSHOT), box_fg, box_bg, 2);
     if (ui.screenshot_state == SCREENSHOT_STATE_SAVING) {
-        lcd_text_center(x, (uint16_t)(y + 38u), w, "SAVING TO USB", box_fg, box_bg, 1);
+        lcd_text_center(x, (uint16_t)(y + 38u), w, i18n_str(I18N_STR_SAVING_TO_USB), box_fg, box_bg, 1);
     } else if (ui.screenshot_state == SCREENSHOT_STATE_OK) {
-        lcd_text_center(x, (uint16_t)(y + 38u), w, "SAVED TO USB", box_fg, box_bg, 1);
+        lcd_text_center(x, (uint16_t)(y + 38u), w, i18n_str(I18N_STR_SAVED_TO_USB), box_fg, box_bg, 1);
     } else {
-        lcd_text_center(x, (uint16_t)(y + 38u), w, "SAVE ERROR", box_fg, box_bg, 1);
+        lcd_text_center(x, (uint16_t)(y + 38u), w, i18n_str(I18N_STR_SAVE_ERROR), box_fg, box_bg, 1);
     }
     (void)bg;
 }
@@ -1546,7 +1522,7 @@ static void scope_sanitize_state(void) {
 }
 
 static const char *scope_display_label(void) {
-    return scope_display_labels[scope_safe_display()];
+    return i18n_scope_display_label(scope_safe_display());
 }
 
 static const char *scope_cursor_label(void) {
@@ -1560,7 +1536,7 @@ static const char *scope_cursor_label(void) {
     if ((scope_fft_src == 1u || scope_fft_src == 2u) && mode == SCOPE_CURSOR_TIME) {
         return "F CUR";
     }
-    return scope_cursor_labels[mode];
+    return i18n_scope_cursor_label(mode);
 }
 
 static const char *scope_cursor_chip_label(void) {
@@ -1574,7 +1550,7 @@ static const char *scope_cursor_chip_label(void) {
     if ((scope_fft_src == 1u || scope_fft_src == 2u) && mode == SCOPE_CURSOR_TIME) {
         return "F";
     }
-    return scope_cursor_short[mode];
+    return i18n_scope_cursor_short(mode);
 }
 
 static const char *scope_timebase_label(void) {
@@ -1615,7 +1591,7 @@ static void draw_scope_scale_status(uint16_t y, uint16_t bg) {
         lcd_text(0, y, ch1, C_CH1, bg, 2);
     }
     lcd_text_center(96, y, 72, scope_timebase_label(), C_TEXT, bg, 2);
-    lcd_text_center(168, y, 56, ui.running ? (scope_slow_roll_active() ? "ROLL" : "RUN") : "HOLD",
+    lcd_text_center(168, y, 56, ui.running ? (scope_slow_roll_active() ? i18n_str(I18N_STR_ROLL) : i18n_str(I18N_STR_RUN)) : i18n_str(I18N_STR_HOLD),
                     ui.running ? C_DMM : C_WARN, bg, 2);
     if (scope_ch_enabled[1]) {
         ch2[0] = 'C';
@@ -1628,7 +1604,7 @@ static void draw_scope_scale_status(uint16_t y, uint16_t bg) {
 }
 
 static const char *scope_channel_enable_label(void) {
-    return scope_ch_enabled[ui.active_ch == 2u ? 1u : 0u] ? "ON" : "OFF";
+    return scope_ch_enabled[ui.active_ch == 2u ? 1u : 0u] ? i18n_str(I18N_STR_ON) : i18n_str(I18N_STR_OFF);
 }
 
 static const char *scope_param_label(uint8_t param) {
@@ -1636,9 +1612,9 @@ static const char *scope_param_label(uint8_t param) {
         return ui.active_ch == 2u ? "CH2" : "CH1";
     }
     if (param == SCOPE_PARAM_POSITION && !ui.scope_channel_menu) {
-        return "MOVE";
+        return i18n_str(I18N_STR_MOVE);
     }
-    return scope_param_labels[param];
+    return i18n_scope_param_label(param);
 }
 
 static const char *scope_probe_label(void) {
@@ -1691,7 +1667,7 @@ static const char *scope_position_label(void) {
 static const char *scope_trigger_chip_label(void) {
     uint8_t mode = ui.scope_trigger_mode < SCOPE_TRIGGER_COUNT ? ui.scope_trigger_mode : SCOPE_TRIGGER_AUTO;
 
-    return scope_trigger_short[mode];
+    return i18n_scope_trigger_short(mode);
 }
 
 static const char *scope_trigger_source_label(void) {
@@ -1709,7 +1685,7 @@ static const char *scope_trigger_level_label(void) {
 }
 
 static const char *scope_trigger_edge_label(void) {
-    return ui.scope_trigger_edge ? "FALL" : "RISE";
+    return i18n_scope_trigger_edge_label(ui.scope_trigger_edge ? 1u : 0u);
 }
 
 static void math_menu_step_selected(int8_t dir) {
@@ -1737,13 +1713,6 @@ static void ui_draw_math_menu(void) {
         return;
     }
 
-    const char *math_status_text[] = { "OFF", "ON" };
-    const char *math_op_text[]     = { "CH1 + CH2", "CH1 - CH2", "CH2 - CH1" };
-    const char *fft_status_text[]  = { "OFF", "FFT CH1", "FFT CH2", "XY MODE", "BODE PLOT" };
-    const char *fft_window_text[]  = { "HANN", "HAMMING", "BLACKMAN", "RECTANGLE" };
-    const char *fft_display_text[] = { "NORMAL", "AVERAGING", "MAX HOLD" };
-    const char *hide_traces_text[] = { "NONE", "CH1", "CH2", "ALL" };
-
     const uint8_t *menu;
     uint8_t rows;
 
@@ -1768,7 +1737,7 @@ static void ui_draw_math_menu(void) {
     lcd_rect(box_x, box_y, box_w, box_h, RGB565(30, 30, 45));
     lcd_frame(box_x, box_y, box_w, box_h, RGB565(255, 165, 0));
 
-    lcd_text(box_x + 10, box_y + 8, "MATH / BODE MENU", RGB565(255, 255, 255), RGB565(30, 30, 45), 1);
+    lcd_text(box_x + 10, box_y + 8, i18n_str(I18N_STR_MATH_BODE_MENU), RGB565(255, 255, 255), RGB565(30, 30, 45), 1);
     lcd_rect(box_x + 10, box_y + 20, box_w - 20, 1, RGB565(100, 100, 100));
 
     row_y = box_y + 26;
@@ -1783,40 +1752,40 @@ static void ui_draw_math_menu(void) {
 
         switch (item) {
             case MENU_ITEM_PLOT:
-                lcd_text(box_x + 12, row_y + 3, "PLOT MODE:", color_fg, color_bg, 1);
-                lcd_text(box_x + 110, row_y + 3, fft_status_text[scope_fft_src], color_fg, color_bg, 1);
+                lcd_text(box_x + 12, row_y + 3, i18n_str(I18N_STR_PLOT_MODE), color_fg, color_bg, 1);
+                lcd_text(box_x + 110, row_y + 3, i18n_fft_status_text(scope_fft_src), color_fg, color_bg, 1);
                 break;
 
             case MENU_ITEM_FFT_WINDOW:
                 if (scope_fft_src != 1 && scope_fft_src != 2) color_fg = RGB565(120, 120, 120);
-                lcd_text(box_x + 12, row_y + 3, "FFT WINDOW:", color_fg, color_bg, 1);
-                lcd_text(box_x + 110, row_y + 3, fft_window_text[scope_fft_window], color_fg, color_bg, 1);
+                lcd_text(box_x + 12, row_y + 3, i18n_str(I18N_STR_FFT_WINDOW), color_fg, color_bg, 1);
+                lcd_text(box_x + 110, row_y + 3, i18n_fft_window_text(scope_fft_window), color_fg, color_bg, 1);
                 break;
 
             case MENU_ITEM_FFT_DISPLAY:
                 if (scope_fft_src != 1 && scope_fft_src != 2) color_fg = RGB565(120, 120, 120);
-                lcd_text(box_x + 12, row_y + 3, "FFT DISPLAY:", color_fg, color_bg, 1);
-                lcd_text(box_x + 110, row_y + 3, fft_display_text[scope_fft_display], color_fg, color_bg, 1);
+                lcd_text(box_x + 12, row_y + 3, i18n_str(I18N_STR_FFT_DISPLAY), color_fg, color_bg, 1);
+                lcd_text(box_x + 110, row_y + 3, i18n_fft_display_text(scope_fft_display), color_fg, color_bg, 1);
                 break;
 
             case MENU_ITEM_MATH_MODE:
-                lcd_text(box_x + 12, row_y + 3, "MATH MODE:", color_fg, color_bg, 1);
-                lcd_text(box_x + 110, row_y + 3, math_status_text[scope_math_mode], color_fg, color_bg, 1);
+                lcd_text(box_x + 12, row_y + 3, i18n_str(I18N_STR_MATH_MODE), color_fg, color_bg, 1);
+                lcd_text(box_x + 110, row_y + 3, i18n_math_status_text(scope_math_mode), color_fg, color_bg, 1);
                 break;
 
             case MENU_ITEM_MATH_OP:
                 if (!scope_math_mode) color_fg = RGB565(120, 120, 120);
-                lcd_text(box_x + 12, row_y + 3, "MATH OP:", color_fg, color_bg, 1);
-                lcd_text(box_x + 110, row_y + 3, math_op_text[scope_math_op], color_fg, color_bg, 1);
+                lcd_text(box_x + 12, row_y + 3, i18n_str(I18N_STR_MATH_OP), color_fg, color_bg, 1);
+                lcd_text(box_x + 110, row_y + 3, i18n_math_op_text(scope_math_op), color_fg, color_bg, 1);
                 break;
 
             case MENU_ITEM_HIDE_TRACES:
-                lcd_text(box_x + 12, row_y + 3, "HIDE TRACES:", color_fg, color_bg, 1);
-                lcd_text(box_x + 110, row_y + 3, hide_traces_text[scope_hide_traces], color_fg, color_bg, 1);
+                lcd_text(box_x + 12, row_y + 3, i18n_str(I18N_STR_HIDE_TRACES), color_fg, color_bg, 1);
+                lcd_text(box_x + 110, row_y + 3, i18n_hide_traces_text(scope_hide_traces), color_fg, color_bg, 1);
                 break;
 
             case MENU_ITEM_BODE_START:
-                lcd_text(box_x + 12, row_y + 3, "START FREQ:", color_fg, color_bg, 1);
+                lcd_text(box_x + 12, row_y + 3, i18n_str(I18N_STR_START_FREQ), color_fg, color_bg, 1);
                 {
                     uint16_t bstart_display = (uint16_t)freq_clamp_display(bode_start_hz, bode_start_unit);
                     char start_digits[5];
@@ -1855,7 +1824,7 @@ static void ui_draw_math_menu(void) {
                 break;
 
             case MENU_ITEM_BODE_STOP:
-                lcd_text(box_x + 12, row_y + 3, "STOP FREQ:", color_fg, color_bg, 1);
+                lcd_text(box_x + 12, row_y + 3, i18n_str(I18N_STR_STOP_FREQ), color_fg, color_bg, 1);
                 {
                     uint16_t bstop_display = (uint16_t)freq_clamp_display(bode_stop_hz, bode_stop_unit);
                     char stop_digits[5];
@@ -1894,7 +1863,7 @@ static void ui_draw_math_menu(void) {
                 break;
 
             case MENU_ITEM_BODE_STEPS:
-                lcd_text(box_x + 12, row_y + 3, "STEPS:", color_fg, color_bg, 1);
+                lcd_text(box_x + 12, row_y + 3, i18n_str(I18N_STR_STEPS), color_fg, color_bg, 1);
                 {
                     char steps_digits[5];
                     steps_digits[0] = (char)('0' + ((bode_steps / 1000) % 10));
@@ -1921,8 +1890,8 @@ static void ui_draw_math_menu(void) {
                 break;
 
             case MENU_ITEM_BODE_SWEEP:
-                lcd_text(box_x + 12, row_y + 3, "SWEEP:", color_fg, color_bg, 1);
-                lcd_text(box_x + 110, row_y + 3, bode_is_sweeping ? "RUNNING" : "RE-SWEEP", color_fg, color_bg, 1);
+                lcd_text(box_x + 12, row_y + 3, i18n_str(I18N_STR_SWEEP), color_fg, color_bg, 1);
+                lcd_text(box_x + 110, row_y + 3, bode_is_sweeping ? i18n_str(I18N_STR_RUNNING) : i18n_str(I18N_STR_RESWEEP), color_fg, color_bg, 1);
                 break;
         }
         row_y += 18u;
@@ -2574,7 +2543,7 @@ static uint8_t dmm_group_selected(uint8_t group) {
 
 static const char *dmm_group_value(uint8_t group) {
     if (dmm_group_selected(group)) {
-        return dmm_mode_short[ui.dmm_mode];
+        return i18n_dmm_mode_short(ui.dmm_mode);
     }
     if (group == 0u) {
         return "DCV ACV RES";
@@ -2622,28 +2591,28 @@ static void draw_dmm_group_chip(uint16_t x, uint16_t y, uint16_t w, uint8_t grou
 
 static void draw_dmm_softkeys(void) {
     lcd_rect(0, Y_SOFT, LCD_WIDTH, H_SOFT, C_BG);
-    draw_dmm_group_chip(UI_PARAM_ROW_X, (uint16_t)(Y_SOFT + 4u), UI_PARAM_CHIP_W, 0, "V/OHM");
+    draw_dmm_group_chip(UI_PARAM_ROW_X, (uint16_t)(Y_SOFT + 4u), UI_PARAM_CHIP_W, 0, i18n_dmm_group_label(0));
     draw_dmm_group_chip((uint16_t)(UI_PARAM_ROW_X + UI_PARAM_CHIP_W + UI_PARAM_CHIP_GAP),
                         (uint16_t)(Y_SOFT + 4u),
                         UI_PARAM_CHIP_W,
                         1,
-                        "TEST");
+                        i18n_dmm_group_label(1));
     draw_dmm_group_chip((uint16_t)(UI_PARAM_ROW_X + (UI_PARAM_CHIP_W + UI_PARAM_CHIP_GAP) * 2u),
                         (uint16_t)(Y_SOFT + 4u),
                         UI_PARAM_CHIP_W,
                         2,
-                        "SENSE");
+                        i18n_dmm_group_label(2));
     draw_dmm_group_chip((uint16_t)(UI_PARAM_ROW_X + (UI_PARAM_CHIP_W + UI_PARAM_CHIP_GAP) * 3u),
                         (uint16_t)(Y_SOFT + 4u),
                         UI_PARAM_CHIP_W,
                         3,
-                        "CURRENT");
+                        i18n_dmm_group_label(3));
 }
 
 static const char *scope_measure_chip_label(void) {
     scope_sanitize_state();
     if (!scope_measure_visible) {
-        return "OFF";
+        return i18n_str(I18N_STR_OFF);
     }
     return scope_measure_labels[scope_measure_param];
 }
@@ -3473,26 +3442,26 @@ static void draw_scope_move_param_row(uint16_t x, uint16_t y) {
     draw_scope_move_chip(x,
                          y,
                          UI_PARAM_CHIP_W,
-                         "MOVE",
+                         i18n_str(I18N_STR_MOVE),
                          ui.active_ch == 2u ? "CH2" : "CH1",
                          ui.scope_move_sel == SCOPE_MOVE_SEL_CHANNEL);
     draw_scope_move_chip((uint16_t)(x + UI_PARAM_CHIP_W + UI_PARAM_CHIP_GAP),
                          y,
                          UI_PARAM_CHIP_W,
-                         "Y POS",
+                         i18n_str(I18N_STR_Y_POS),
                          scope_y_pos_label(),
                          ui.scope_move_sel == SCOPE_MOVE_SEL_Y);
     draw_scope_move_chip((uint16_t)(x + (UI_PARAM_CHIP_W + UI_PARAM_CHIP_GAP) * 2u),
                          y,
                          UI_PARAM_CHIP_W,
-                         "X POS",
+                         i18n_str(I18N_STR_X_POS),
                          scope_h_pos_label(),
                          ui.scope_move_sel == SCOPE_MOVE_SEL_X);
     draw_scope_move_chip((uint16_t)(x + (UI_PARAM_CHIP_W + UI_PARAM_CHIP_GAP) * 3u),
                          y,
                          UI_PARAM_CHIP_W,
-                         "RESET",
-                         "ZERO",
+                         i18n_str(I18N_STR_RESET),
+                         i18n_str(I18N_STR_ZERO),
                          ui.scope_move_sel == SCOPE_MOVE_SEL_ZERO);
 }
 
@@ -3524,14 +3493,14 @@ static void draw_softkeys(void) {
         }
         return;
     }
-    const char *f1 = ui.mode == UI_MODE_SCOPE ? scope_display_label() : "WAVE";
+    const char *f1 = ui.mode == UI_MODE_SCOPE ? scope_display_label() : i18n_gen_param_label(0);
     const char *f2 = ui.mode == UI_MODE_SCOPE ? "VDIV" : "FREQ";
-    const char *f3 = ui.running ? "RUN" : "HOLD";
+    const char *f3 = ui.running ? i18n_str(I18N_STR_RUN) : i18n_str(I18N_STR_HOLD);
     const char *f4 = ui.mode == UI_MODE_SCOPE ? scope_cursor_label() : "FREQ";
     if (ui.mode == UI_MODE_GEN) {
-        f2 = "PARAM";
-        f3 = ui.running ? "STOP" : "START";
-        f4 = "VALUE";
+        f2 = i18n_str(I18N_STR_PARAM);
+        f3 = ui.running ? i18n_str(I18N_STR_STOP) : i18n_str(I18N_STR_START);
+        f4 = i18n_str(I18N_STR_VALUE);
     }
     lcd_rect(0, Y_SOFT, LCD_WIDTH, H_SOFT, C_BG);
     draw_softkey(0, f1, accent);
@@ -3692,9 +3661,20 @@ static void format_low_current_value(const char *text, char out[10]) {
 
 static void dmm_stats_reset(void) {
     dmm_stats.valid = 0;
+    dmm_stats.min_valid = 0;
+    dmm_stats.settle_count = 0;
     dmm_stats.count = 0;
     dmm_stats.zero_count = 0;
     dmm_stats.zero_idle = 0;
+}
+
+static uint8_t dmm_stats_supported_mode(void) {
+    return ui.dmm_mode == DMM_MODE_DCV ||
+           ui.dmm_mode == DMM_MODE_ACV ||
+           ui.dmm_mode == DMM_MODE_AC_HI_CURR ||
+           ui.dmm_mode == DMM_MODE_DC_HI_CURR ||
+           ui.dmm_mode == DMM_MODE_AC_LO_CURR ||
+           ui.dmm_mode == DMM_MODE_DC_LO_CURR;
 }
 
 static uint8_t dmm_stat_decimals(void) {
@@ -3706,6 +3686,47 @@ static uint8_t dmm_stats_near_zero(int32_t value) {
         value = -value;
     }
     return value <= 5;
+}
+
+static void format_fixed_decimal(int32_t value, uint8_t decimals, char out[12]) {
+    uint8_t pos = 0;
+    uint32_t abs_value;
+    uint32_t scale = decimals >= 4u ? 10000u : 1000u;
+    uint32_t whole;
+    uint16_t frac;
+
+    if (value < 0) {
+        out[pos++] = '-';
+        abs_value = (uint32_t)(-value);
+    } else {
+        abs_value = (uint32_t)value;
+    }
+
+    whole = abs_value / scale;
+    frac = (uint16_t)(abs_value % scale);
+    if (whole > 9999u) {
+        ui_text_copy(out, value < 0 ? i18n_str(I18N_STR_NEG_OVER) : i18n_str(I18N_STR_OVER), 12);
+        return;
+    }
+
+    if (whole >= 1000u) {
+        out[pos++] = (char)('0' + whole / 1000u);
+    }
+    if (whole >= 100u) {
+        out[pos++] = (char)('0' + (whole / 100u) % 10u);
+    }
+    if (whole >= 10u) {
+        out[pos++] = (char)('0' + (whole / 10u) % 10u);
+    }
+    out[pos++] = (char)('0' + whole % 10u);
+    out[pos++] = '.';
+    if (decimals >= 4u) {
+        out[pos++] = (char)('0' + frac / 1000u);
+    }
+    out[pos++] = (char)('0' + (frac / 100u) % 10u);
+    out[pos++] = (char)('0' + (frac / 10u) % 10u);
+    out[pos++] = (char)('0' + frac % 10u);
+    out[pos] = 0;
 }
 
 static uint8_t parse_fixed_decimal(const char *text, uint8_t decimals, int32_t *out) {
@@ -3749,67 +3770,81 @@ static uint8_t parse_fixed_decimal(const char *text, uint8_t decimals, int32_t *
     return 1;
 }
 
+static const char *dmm_active_reading_value(void);
+static const char *dmm_active_reading_raw_unit(void);
 static const char *dmm_display_value(void);
 static const char *dmm_display_unit(void);
 
 static void dmm_stats_update(void) {
-    const char *unit;
+    const char *raw_unit;
     int32_t sample;
     int32_t delta;
     uint8_t decimals;
     uint8_t near_zero;
 
-    if (ui.mode != UI_MODE_DMM || dmm_hold_active) {
+    if (ui.mode != UI_MODE_DMM || dmm_hold_active || !dmm_stats_supported_mode()) {
         return;
     }
     if (!dmm_has_reading() || !dmm_value_is_numeric()) {
-        dmm_stats_reset();
+        dmm_stats.settle_count = 0;
         return;
     }
 
-    unit = dmm_display_unit();
+    raw_unit = dmm_active_reading_raw_unit();
     decimals = dmm_stat_decimals();
-    if (!parse_fixed_decimal(dmm_display_value(), decimals, &sample)) {
-        dmm_stats_reset();
+    if (!parse_fixed_decimal(dmm_active_reading_value(), decimals, &sample)) {
+        dmm_stats.settle_count = 0;
         return;
     }
     near_zero = dmm_stats_near_zero(sample);
 
     if (near_zero) {
-        if (dmm_stats.zero_count < DMM_STATS_ZERO_RESET_SAMPLES) {
-            ++dmm_stats.zero_count;
-        }
-        if (dmm_stats.zero_count >= DMM_STATS_ZERO_RESET_SAMPLES) {
-            dmm_stats.valid = 0;
-            dmm_stats.count = 0;
-            dmm_stats.zero_idle = 1;
-            dmm_stats.zero_count = DMM_STATS_ZERO_RESET_SAMPLES;
-        }
-    } else if (dmm_stats.zero_idle) {
-        dmm_stats.valid = 0;
-        dmm_stats.count = 0;
-        dmm_stats.zero_idle = 0;
-        dmm_stats.zero_count = 0;
-    } else {
-        dmm_stats.zero_count = 0;
+        dmm_stats.settle_count = 0;
+        return;
     }
 
     if (!dmm_stats.valid ||
         dmm_stats.mode != ui.dmm_mode ||
         dmm_stats.decimals != decimals ||
-        !ui_text_equal(dmm_stats.unit, unit)) {
+        !ui_text_equal(dmm_stats.unit, raw_unit)) {
         dmm_stats.valid = 1;
+        dmm_stats.min_valid = 0;
+        dmm_stats.settle_count = 1;
         dmm_stats.mode = ui.dmm_mode;
         dmm_stats.decimals = decimals;
         dmm_stats.count = 1;
         dmm_stats.min_value = sample;
         dmm_stats.avg_value = sample;
         dmm_stats.max_value = sample;
-        ui_text_copy(dmm_stats.unit, unit, sizeof(dmm_stats.unit));
-        if (!near_zero) {
-            dmm_stats.zero_idle = 0;
-        }
+        ui_text_copy(dmm_stats.unit, raw_unit, sizeof(dmm_stats.unit));
         return;
+    }
+
+    if (dmm_stats.settle_count < DMM_STATS_MIN_SETTLE_SAMPLES) {
+        ++dmm_stats.settle_count;
+        if (!dmm_stats.min_valid) {
+            if (dmm_stats.settle_count >= DMM_STATS_MIN_SETTLE_SAMPLES) {
+                dmm_stats.min_valid = 1;
+                dmm_stats.min_value = sample;
+                if ((sample >= 0 && sample > dmm_stats.max_value) ||
+                    (sample < 0 && dmm_stats.max_value > sample)) {
+                    dmm_stats.max_value = sample;
+                }
+                if (dmm_stats.min_value > dmm_stats.max_value) {
+                    dmm_stats.max_value = dmm_stats.min_value;
+                }
+            } else if ((sample >= 0 && sample > dmm_stats.max_value) ||
+                       (sample < 0 && sample < dmm_stats.max_value)) {
+                dmm_stats.max_value = sample;
+            }
+            return;
+        }
+        if (dmm_stats.settle_count < DMM_STATS_MIN_SETTLE_SAMPLES) {
+            if (sample >= 0 && sample > dmm_stats.max_value) {
+                dmm_stats.max_value = sample;
+            }
+            return;
+        }
     }
 
     if (sample < dmm_stats.min_value) {
@@ -3836,13 +3871,16 @@ static uint8_t dmm_live_wire_detected(void) {
 
 static const char *dmm_live_display_value(void) {
     if (dmm_live_open_display()) {
-        return "OPEN";
+        return i18n_str(I18N_STR_OPEN);
     }
     if (!dmm_has_reading()) {
         return "";
     }
     if (ui.dmm_mode == DMM_MODE_LIVE) {
-        return "LIVE";
+        return i18n_str(I18N_STR_LIVE);
+    }
+    if (ui_text_equal(dmm_value_text(), "AUTO")) {
+        return i18n_str(I18N_STR_AUTO);
     }
     if (dmm_low_current_mode()) {
         if (!dmm_value_is_numeric()) {
@@ -3884,18 +3922,54 @@ static const char *dmm_rel_display_value(void) {
     return dmm_rel_value;
 }
 
-static const char *dmm_display_value(void) {
+static const char *dmm_active_reading_value(void) {
     if (dmm_hold_active) {
         return dmm_hold_value;
     }
     return dmm_rel_active ? dmm_rel_display_value() : dmm_live_display_value();
 }
 
-static const char *dmm_display_unit(void) {
+static const char *dmm_active_reading_raw_unit(void) {
     if (dmm_hold_active) {
         return dmm_hold_unit;
     }
     return dmm_rel_active ? dmm_rel_unit : dmm_live_display_unit();
+}
+
+static const char *dmm_display_value(void) {
+    if (dmm_stats_supported_mode() && dmm_view_mode != DMM_VIEW_LIVE) {
+        if (dmm_view_mode == DMM_VIEW_MIN) {
+            if (!dmm_stats.valid || !dmm_stats.min_valid) {
+                return "-----";
+            }
+            format_fixed_decimal(dmm_stats.min_value, dmm_stats.decimals, dmm_stat_main_value);
+            return dmm_stat_main_value;
+        }
+        if (dmm_view_mode == DMM_VIEW_MAX) {
+            if (!dmm_stats.valid) {
+                return "-----";
+            }
+            format_fixed_decimal(dmm_stats.max_value, dmm_stats.decimals, dmm_stat_main_value);
+            return dmm_stat_main_value;
+        }
+        if (dmm_view_mode == DMM_VIEW_MAX_MIN) {
+            if (!dmm_stats.valid || !dmm_stats.min_valid) {
+                return "-----";
+            }
+            format_fixed_decimal(dmm_stats.max_value - dmm_stats.min_value,
+                                 dmm_stats.decimals,
+                                 dmm_stat_main_value);
+            return dmm_stat_main_value;
+        }
+    }
+    return dmm_active_reading_value();
+}
+
+static const char *dmm_display_unit(void) {
+    if (dmm_stats_supported_mode() && dmm_view_mode != DMM_VIEW_LIVE && dmm_stats.valid && dmm_stats.unit[0]) {
+        return i18n_dmm_unit(dmm_stats.unit);
+    }
+    return i18n_dmm_unit(dmm_active_reading_raw_unit());
 }
 
 static uint8_t dmm_current_mode(void) {
@@ -3948,16 +4022,16 @@ static uint16_t dmm_measure_color(void) {
 static const char *dmm_alert_label(void) {
     uint8_t warning = dmm_voltage_warning_level();
     if (dmm_live_wire_detected()) {
-        return "LIVE WIRE";
+        return i18n_str(I18N_STR_LIVE_WIRE);
     }
     if (warning >= 2u) {
-        return "DANGER V";
+        return i18n_str(I18N_STR_DANGER_V);
     }
     if (warning) {
-        return "HIGH V";
+        return i18n_str(I18N_STR_HIGH_V);
     }
     if (dmm_current_mode()) {
-        return dmm_high_current_mode() ? "USE HI JACK" : "USE LO JACK";
+        return dmm_high_current_mode() ? i18n_str(I18N_STR_USE_HI_JACK) : i18n_str(I18N_STR_USE_LO_JACK);
     }
     return 0;
 }
@@ -3979,30 +4053,52 @@ static uint8_t dmm_auto_range_display(void) {
 
 static const char *dmm_mode_status_label(void) {
     if (dmm_hold_active) {
-        return "HOLD";
+        return i18n_str(I18N_STR_HOLD);
     }
     if (dmm_rel_active) {
-        return "REL";
+        return i18n_str(I18N_STR_REL);
     }
-    return dmm_auto_range_display() ? "AUTO MODE" : "MANUAL MODE";
+    if (dmm_stats_supported_mode()) {
+        if (dmm_view_mode == DMM_VIEW_MIN) {
+            return i18n_str(I18N_STR_DMM_MIN);
+        }
+        if (dmm_view_mode == DMM_VIEW_MAX) {
+            return i18n_str(I18N_STR_DMM_MAX);
+        }
+        if (dmm_view_mode == DMM_VIEW_MAX_MIN) {
+            return i18n_str(I18N_STR_DMM_MAX_MIN);
+        }
+    }
+    return dmm_auto_range_display() ? i18n_str(I18N_STR_AUTO_MODE) : i18n_str(I18N_STR_MANUAL_MODE);
 }
 
 static const char *dmm_mode_status_detail(void) {
     const char *value;
     const char *unit;
 
-    if (!dmm_rel_active) {
-        return 0;
+    if (dmm_rel_active) {
+        value = dmm_rel_ref_value;
+        unit = i18n_dmm_unit(dmm_rel_unit);
+        ui_text_copy(dmm_status_detail, value, sizeof(dmm_status_detail));
+        if (unit[0] && !ui_text_equal(value, "-----") && !ui_text_equal(value, "RANGE")) {
+            ui_text_append(dmm_status_detail, " ", sizeof(dmm_status_detail));
+            ui_text_append(dmm_status_detail, unit, sizeof(dmm_status_detail));
+        }
+        return dmm_status_detail;
     }
 
-    value = dmm_rel_ref_value;
-    unit = dmm_rel_unit;
-    ui_text_copy(dmm_status_detail, value, sizeof(dmm_status_detail));
-    if (unit[0] && !ui_text_equal(value, "-----") && !ui_text_equal(value, "RANGE")) {
-        ui_text_append(dmm_status_detail, " ", sizeof(dmm_status_detail));
-        ui_text_append(dmm_status_detail, unit, sizeof(dmm_status_detail));
+    if (dmm_stats_supported_mode() && dmm_view_mode != DMM_VIEW_LIVE) {
+        value = dmm_active_reading_value();
+        unit = i18n_dmm_unit(dmm_active_reading_raw_unit());
+        ui_text_copy(dmm_status_detail, value, sizeof(dmm_status_detail));
+        if (unit[0] && !ui_text_equal(value, "-----") && !ui_text_equal(value, "RANGE")) {
+            ui_text_append(dmm_status_detail, " ", sizeof(dmm_status_detail));
+            ui_text_append(dmm_status_detail, unit, sizeof(dmm_status_detail));
+        }
+        return dmm_status_detail;
     }
-    return dmm_status_detail;
+
+    return 0;
 }
 
 static void lcd_text_right_fit(uint16_t left,
@@ -4029,7 +4125,7 @@ static void draw_dmm_mode_status(uint16_t x, uint16_t y, uint16_t right, uint16_
     const char *label = dmm_mode_status_label();
     const char *detail = dmm_mode_status_detail();
     uint16_t label_w = lcd_text_width(label, 2);
-    uint16_t label_color = dmm_hold_active ? C_WARN : C_TEXT;
+    uint16_t label_color = dmm_hold_active ? C_WARN : (dmm_view_mode != DMM_VIEW_LIVE ? C_CH1 : C_TEXT);
 
     lcd_text(x, y, label, label_color, bg, 2);
     if (detail && right > (uint16_t)(x + label_w + 10u)) {
@@ -4046,6 +4142,63 @@ static void draw_dmm_mode_status(uint16_t x, uint16_t y, uint16_t right, uint16_
                            scale,
                            scale);
     }
+}
+
+static void draw_dmm_stats_row(uint16_t x,
+                               uint16_t y,
+                               const char *label,
+                               const char *value,
+                               uint8_t active,
+                               uint16_t bg) {
+    char line[24];
+    uint16_t label_fg = active ? C_CH1 : C_MUTED;
+    uint16_t value_fg = active ? C_CH1 : C_TEXT;
+    uint16_t label_w;
+
+    line[0] = 0;
+    ui_text_copy(line, label, sizeof(line));
+    ui_text_append(line, ": ", sizeof(line));
+    label_w = lcd_text_width(line, 1);
+    lcd_text(x, y, line, label_fg, bg, 1);
+    lcd_text((uint16_t)(x + label_w), y, value, value_fg, bg, 1);
+}
+
+static void draw_dmm_stats_block(uint16_t x, uint16_t y, uint8_t step_y, uint16_t bg) {
+    char min_buf[12];
+    char max_buf[12];
+    char diff_buf[12];
+    const char *min_str = "---";
+    const char *max_str = "---";
+    const char *diff_str = "---";
+
+    if (!dmm_stats_supported_mode()) {
+        return;
+    }
+
+    if (dmm_stats.valid) {
+        format_fixed_decimal(dmm_stats.max_value, dmm_stats.decimals, max_buf);
+        max_str = max_buf;
+        if (dmm_stats.min_valid) {
+            format_fixed_decimal(dmm_stats.min_value, dmm_stats.decimals, min_buf);
+            format_fixed_decimal(dmm_stats.max_value - dmm_stats.min_value, dmm_stats.decimals, diff_buf);
+            min_str = min_buf;
+            diff_str = diff_buf;
+        }
+    }
+
+    draw_dmm_stats_row(x, y, i18n_str(I18N_STR_DMM_MIN), min_str, dmm_view_mode == DMM_VIEW_MIN, bg);
+    draw_dmm_stats_row(x,
+                       (uint16_t)(y + step_y),
+                       i18n_str(I18N_STR_DMM_MAX),
+                       max_str,
+                       dmm_view_mode == DMM_VIEW_MAX,
+                       bg);
+    draw_dmm_stats_row(x,
+                       (uint16_t)(y + (uint16_t)(step_y * 2u)),
+                       i18n_str(I18N_STR_DMM_MAX_MIN),
+                       diff_str,
+                       dmm_view_mode == DMM_VIEW_MAX_MIN,
+                       bg);
 }
 
 static void draw_dmm_alert_chip(uint16_t x, uint16_t y, uint16_t w, const char *label, uint16_t color) {
@@ -4091,25 +4244,32 @@ static void draw_dmm_panel(void) {
     enum {
         VALUE_LEFT = 22,
         VALUE_RIGHT = 300,
-        VALUE_Y = 100,
-        UNIT_Y = 150,
+        VALUE_Y = 98,
+        UNIT_Y = 152,
     };
     uint8_t alert = dmm_voltage_warning_level();
     uint8_t live_detected = dmm_live_wire_detected();
+    uint8_t show_status = (uint8_t)(dmm_hold_active || dmm_rel_active ||
+                                    (dmm_stats_supported_mode() && dmm_view_mode != DMM_VIEW_LIVE));
     uint16_t value_right = live_detected ? 218u : VALUE_RIGHT;
     uint16_t value_color = dmm_measure_color();
     uint16_t unit_color = alert ? value_color : C_DMM;
 
-    lcd_rect(10, 55, 300, 105, C_PANEL);
-    lcd_rect(10, 55, 5, 105, C_DMM);
-    lcd_text(22, 58, dmm_mode_names[ui.dmm_mode], C_DMM, C_PANEL, 3);
-    if (dmm_hold_active || dmm_rel_active) {
-        draw_dmm_mode_status(22, 80, 300u, C_PANEL);
+    lcd_rect(10, 55, 300, 136, C_PANEL);
+    lcd_rect(10, 55, 5, 136, C_DMM);
+    {
+        const char *mname = i18n_dmm_mode_name(ui.dmm_mode);
+        uint8_t mscale = lcd_text_width(mname, 3) <= 270 ? 3 : 2;
+        lcd_text(22, 58, mname, C_DMM, C_PANEL, mscale);
     }
-    if (!dmm_hold_active && !dmm_rel_active) {
-        draw_dmm_alert_chip(176, 84, 124, dmm_alert_label(), dmm_alert_color());
+    if (show_status) {
+        draw_dmm_mode_status(22, 78, 300u, C_PANEL);
+    }
+    if (!show_status) {
+        draw_dmm_alert_chip(176, 78, 124, dmm_alert_label(), dmm_alert_color());
     }
     lcd_text_right_fit(VALUE_LEFT, value_right, VALUE_Y, dmm_display_value(), value_color, C_PANEL, 6, 4);
+    draw_dmm_stats_block(VALUE_LEFT, 150, 11, C_PANEL);
     lcd_text_right_fit(VALUE_LEFT, VALUE_RIGHT, UNIT_Y, dmm_display_unit(), unit_color, C_PANEL, 3, 2);
     if (live_detected) {
         draw_high_voltage_symbol(264, 100, 42, C_PANEL);
@@ -4120,24 +4280,31 @@ static void draw_dmm_immersive_panel(void) {
     enum {
         VALUE_LEFT = 16,
         VALUE_RIGHT = 310,
-        VALUE_Y = 88,
-        UNIT_Y = 148,
+        VALUE_Y = 82,
+        UNIT_Y = 150,
     };
     uint8_t alert = dmm_voltage_warning_level();
     uint8_t live_detected = dmm_live_wire_detected();
+    uint8_t show_status = (uint8_t)(dmm_hold_active || dmm_rel_active ||
+                                    (dmm_stats_supported_mode() && dmm_view_mode != DMM_VIEW_LIVE));
     uint16_t value_right = live_detected ? 222u : VALUE_RIGHT;
     uint16_t value_color = dmm_measure_color();
     uint16_t unit_color = alert ? value_color : C_DMM;
 
     lcd_rect(0, 24, LCD_WIDTH, 174, C_BG);
-    lcd_text(18, 27, dmm_mode_names[ui.dmm_mode], C_DMM, C_BG, 3);
-    if (dmm_hold_active || dmm_rel_active) {
-        draw_dmm_mode_status(18, 68, 304u, C_BG);
+    {
+        const char *mname = i18n_dmm_mode_name(ui.dmm_mode);
+        uint8_t mscale = lcd_text_width(mname, 3) <= 270 ? 3 : 2;
+        lcd_text(18, 27, mname, C_DMM, C_BG, mscale);
     }
-    if (!dmm_hold_active && !dmm_rel_active) {
+    if (show_status) {
+        draw_dmm_mode_status(18, 60, 304u, C_BG);
+    }
+    if (!show_status) {
         draw_dmm_alert_chip(176, 55, 128, dmm_alert_label(), dmm_alert_color());
     }
     lcd_text_right_fit(VALUE_LEFT, value_right, VALUE_Y, dmm_display_value(), value_color, C_BG, 7, 5);
+    draw_dmm_stats_block(18, 148, 12, C_BG);
     lcd_text_right_fit(VALUE_LEFT, VALUE_RIGHT, UNIT_Y, dmm_display_unit(), unit_color, C_BG, 4, 3);
     if (live_detected) {
         draw_high_voltage_symbol(266, 92, 58, C_BG);
@@ -5204,7 +5371,7 @@ static void draw_scope_calibration_overlay(void) {
     lcd_rect(x, y, w, h, box_bg);
     lcd_frame(x, y, w, h, C_SCOPE);
     lcd_rect(x, y, w, 4, C_SCOPE);
-    lcd_text_center(x, (uint16_t)(y + 13u), w, "BASELINE CAL", box_fg, box_bg, 2);
+    lcd_text_center(x, (uint16_t)(y + 13u), w, i18n_str(I18N_STR_BASELINE_CAL), box_fg, box_bg, 2);
     if ((scope_auto_zero_mask & 0x03u) == 0x03u) {
         uint16_t ch1_w = lcd_text_width("CH1", 2);
         uint16_t sep_w = lcd_text_width(" & ", 2);
@@ -5220,7 +5387,7 @@ static void draw_scope_calibration_overlay(void) {
     } else {
         lcd_text_center(x, (uint16_t)(y + 38u), w, "CH1", C_CH1, box_bg, 2);
     }
-    lcd_text_center(x, (uint16_t)(y + 58u), w, "REMOVE PROBE  WAIT", C_PANEL_2, box_bg, 1);
+    lcd_text_center(x, (uint16_t)(y + 58u), w, i18n_str(I18N_STR_REMOVE_PROBE_WAIT), C_PANEL_2, box_bg, 1);
     done = (uint16_t)(120u - (scope_auto_zero_steps_left > 120u ? 120u : scope_auto_zero_steps_left));
     lcd_frame((uint16_t)(x + 18u), (uint16_t)(y + 72u), (uint16_t)(w - 36u), 5, C_GRID);
     lcd_rect((uint16_t)(x + 19u),
@@ -6694,7 +6861,7 @@ static void draw_gen_param_chip(uint16_t x, uint16_t y, uint16_t w, uint8_t para
 
     lcd_rect(x, y, w, 32, chip_bg);
     lcd_rect(x, y, w, 2, C_GEN);
-    lcd_text((uint16_t)(x + 6u), (uint16_t)(y + 4u), gen_param_labels[param], fg, chip_bg, 1);
+    lcd_text((uint16_t)(x + 6u), (uint16_t)(y + 4u), i18n_gen_param_label(param), fg, chip_bg, 1);
     if (param == GEN_PARAM_FREQ && ui.gen_wave != SIGGEN_WAVE_ARBITRARY) {
         uint16_t value_y = (uint16_t)(y + 15u);
         uint16_t digit_x = (uint16_t)(x + 4u);
@@ -6748,7 +6915,7 @@ static void draw_gen_param_row(uint16_t x, uint16_t y) {
     const char *amp_val = "";
 
     if (wave == SIGGEN_WAVE_ARBITRARY) {
-        freq_val = arb_file_index < arb_file_count() ? arb_file_name(arb_file_index) : "NO FILE";
+        freq_val = arb_file_index < arb_file_count() ? arb_file_name(arb_file_index) : i18n_str(I18N_STR_NO_FILE);
         {
             static char pts_buf[8];
             uint16_t cnt;
@@ -6785,7 +6952,7 @@ static void draw_gen_param_row(uint16_t x, uint16_t y) {
         }
     }
 
-    draw_gen_param_chip(x, y, GEN_PARAM_CHIP_W, GEN_PARAM_WAVE, gen_wave_short_labels[wave]);
+    draw_gen_param_chip(x, y, GEN_PARAM_CHIP_W, GEN_PARAM_WAVE, i18n_gen_wave_short_label(wave));
     draw_gen_param_chip((uint16_t)(x + GEN_PARAM_CHIP_W + GEN_PARAM_CHIP_GAP),
                         y,
                         GEN_PARAM_CHIP_W,
@@ -6808,7 +6975,11 @@ static void draw_generator(void) {
     draw_mode_tabs();
     lcd_rect(10, 55, 303, 136, C_PANEL);
     lcd_rect(10, 55, 5, 136, C_GEN);
-    lcd_text(22, 58, gen_wave_labels[ui.gen_wave], C_GEN, C_PANEL, 3);
+    {
+        const char *wname = i18n_gen_wave_label(ui.gen_wave);
+        uint8_t wscale = lcd_text_width(wname, 3) <= 260 ? 3 : 2;
+        lcd_text(22, 58, wname, C_GEN, C_PANEL, wscale);
+    }
     draw_gen_wave_preview(22, 101, 204, 76, C_PANEL);
     draw_gen_output_panel(GEN_OUTPUT_X, 101, GEN_OUTPUT_W, 76, C_PANEL);
 }
@@ -6818,20 +6989,15 @@ static void ui_draw_gen_sweep_menu(void) {
         return;
     }
 
-    const char *gen_sweep_mode_names[] = { "OFF", "LINEAR", "LOG" };
-    const char *gen_fm_mode_names[]    = { "OFF", "ON" };
-    const char *gen_fm_wave_names[]    = { "SINE", "TRIANGLE", "SQUARE" };
-
     uint16_t box_x = 50;
     uint16_t box_y = 40;
     uint16_t box_w = 220;
     uint16_t box_h = 160;
 
-
     lcd_rect(box_x, box_y, box_w, box_h, RGB565(30, 30, 45)); 
     lcd_frame(box_x, box_y, box_w, box_h, RGB565(255, 165, 0)); 
 
-    lcd_text(box_x + 10, box_y + 8, "SWEEP AND MODULATION", RGB565(255, 255, 255), RGB565(30, 30, 45), 1);
+    lcd_text(box_x + 10, box_y + 8, i18n_str(I18N_STR_SWEEP_MODULATION), RGB565(255, 255, 255), RGB565(30, 30, 45), 1);
     lcd_rect(box_x + 10, box_y + 20, box_w - 20, 1, RGB565(100, 100, 100)); 
 
     uint16_t color_fg, color_bg;
@@ -6841,14 +7007,14 @@ static void ui_draw_gen_sweep_menu(void) {
     color_bg = (gen_sweep_row_selected == 0) ? RGB565(0, 120, 240) : RGB565(30, 30, 45);
     color_fg = RGB565(255, 255, 255);
     lcd_rect(box_x + 8, row_y, box_w - 16, 14, color_bg);
-    lcd_text(box_x + 12, row_y + 3, "SWEEP MODE:", color_fg, color_bg, 1);
-    lcd_text(box_x + 110, row_y + 3, gen_sweep_mode_names[gen_sweep_mode], color_fg, color_bg, 1);
+    lcd_text(box_x + 12, row_y + 3, i18n_str(I18N_STR_SWEEP_MODE), color_fg, color_bg, 1);
+    lcd_text(box_x + 110, row_y + 3, i18n_gen_sweep_mode_name(gen_sweep_mode), color_fg, color_bg, 1);
 
     row_y = box_y + 44;
     color_bg = (gen_sweep_row_selected == 1) ? RGB565(0, 120, 240) : RGB565(30, 30, 45);
     color_fg = (gen_sweep_mode) ? RGB565(255, 255, 255) : RGB565(120, 120, 120); 
     lcd_rect(box_x + 8, row_y, box_w - 16, 14, color_bg);
-    lcd_text(box_x + 12, row_y + 3, "SWEEP TIME:", color_fg, color_bg, 1);
+    lcd_text(box_x + 12, row_y + 3, i18n_str(I18N_STR_SWEEP_TIME), color_fg, color_bg, 1);
     
     char sweep_digits[5];
     sweep_digits[0] = (char)('0' + ((gen_sweep_ms / 1000) % 10));
@@ -6877,7 +7043,7 @@ static void ui_draw_gen_sweep_menu(void) {
     color_bg = (gen_sweep_row_selected == 2) ? RGB565(0, 120, 240) : RGB565(30, 30, 45);
     color_fg = (gen_sweep_mode) ? RGB565(255, 255, 255) : RGB565(120, 120, 120); 
     lcd_rect(box_x + 8, row_y, box_w - 16, 14, color_bg);
-    lcd_text(box_x + 12, row_y + 3, "START FREQ:", color_fg, color_bg, 1);
+    lcd_text(box_x + 12, row_y + 3, i18n_str(I18N_STR_START_FREQ), color_fg, color_bg, 1);
     
     {
         uint16_t start_display = (uint16_t)freq_clamp_display(siggen_sweep_start_hz, sweep_start_unit);
@@ -6919,7 +7085,7 @@ static void ui_draw_gen_sweep_menu(void) {
     color_bg = (gen_sweep_row_selected == 3) ? RGB565(0, 120, 240) : RGB565(30, 30, 45);
     color_fg = (gen_sweep_mode) ? RGB565(255, 255, 255) : RGB565(120, 120, 120); 
     lcd_rect(box_x + 8, row_y, box_w - 16, 14, color_bg);
-    lcd_text(box_x + 12, row_y + 3, "STOP FREQ:", color_fg, color_bg, 1);
+    lcd_text(box_x + 12, row_y + 3, i18n_str(I18N_STR_STOP_FREQ), color_fg, color_bg, 1);
     
     {
         uint16_t stop_display = (uint16_t)freq_clamp_display(siggen_sweep_stop_hz, sweep_stop_unit);
@@ -6961,21 +7127,21 @@ static void ui_draw_gen_sweep_menu(void) {
     color_bg = (gen_sweep_row_selected == 4) ? RGB565(0, 120, 240) : RGB565(30, 30, 45);
     color_fg = RGB565(255, 255, 255);
     lcd_rect(box_x + 8, row_y, box_w - 16, 14, color_bg);
-    lcd_text(box_x + 12, row_y + 3, "FM MODE:", color_fg, color_bg, 1);
-    lcd_text(box_x + 110, row_y + 3, gen_fm_mode_names[gen_fm_mode], color_fg, color_bg, 1);
+    lcd_text(box_x + 12, row_y + 3, i18n_str(I18N_STR_FM_MODE), color_fg, color_bg, 1);
+    lcd_text(box_x + 110, row_y + 3, i18n_gen_fm_mode_name(gen_fm_mode), color_fg, color_bg, 1);
 
     row_y = box_y + 116;
     color_bg = (gen_sweep_row_selected == 5) ? RGB565(0, 120, 240) : RGB565(30, 30, 45);
     color_fg = (gen_fm_mode) ? RGB565(255, 255, 255) : RGB565(120, 120, 120); 
     lcd_rect(box_x + 8, row_y, box_w - 16, 14, color_bg);
-    lcd_text(box_x + 12, row_y + 3, "FM WAVE:", color_fg, color_bg, 1);
-    lcd_text(box_x + 110, row_y + 3, gen_fm_wave_names[gen_fm_source], color_fg, color_bg, 1);
+    lcd_text(box_x + 12, row_y + 3, i18n_str(I18N_STR_FM_WAVE), color_fg, color_bg, 1);
+    lcd_text(box_x + 110, row_y + 3, i18n_gen_fm_wave_name(gen_fm_source), color_fg, color_bg, 1);
 
     row_y = box_y + 134;
     color_bg = (gen_sweep_row_selected == 6) ? RGB565(0, 120, 240) : RGB565(30, 30, 45);
     color_fg = (gen_fm_mode) ? RGB565(255, 255, 255) : RGB565(120, 120, 120); 
     lcd_rect(box_x + 8, row_y, box_w - 16, 14, color_bg);
-    lcd_text(box_x + 12, row_y + 3, "FM FREQ:", color_fg, color_bg, 1);
+    lcd_text(box_x + 12, row_y + 3, i18n_str(I18N_STR_FM_FREQ), color_fg, color_bg, 1);
     
     {
         uint16_t fm_display = (uint16_t)freq_clamp_display(gen_fm_freq_hz, fm_freq_unit);
@@ -7018,7 +7184,11 @@ static void draw_generator_immersive(void) {
     lcd_rect(0, 0, LCD_WIDTH, LCD_HEIGHT, C_BG);
     draw_micro_status(6, 6, C_BG);
     draw_battery_status_overlay(C_BG);
-    lcd_text(18, 31, gen_wave_labels[ui.gen_wave], C_GEN, C_BG, 3);
+    {
+        const char *wname = i18n_gen_wave_label(ui.gen_wave);
+        uint8_t wscale = lcd_text_width(wname, 3) <= 260 ? 3 : 2;
+        lcd_text(18, 31, wname, C_GEN, C_BG, wscale);
+    }
     draw_gen_wave_preview(14, 68, 220, 123, C_BG);
     draw_gen_output_panel(GEN_OUTPUT_X, 68, GEN_OUTPUT_W, 123, C_BG);
     draw_gen_param_row(GEN_PARAM_ROW_X, (uint16_t)(Y_SOFT + 4u));
@@ -7122,10 +7292,15 @@ static void draw_mode_menu_item(uint8_t index, uint16_t x, uint16_t y, uint16_t 
     lcd_rect(x, y, w, 5, accent);
     draw_menu_icon(index, (uint16_t)(x + (w - 46u) / 2u), (uint16_t)(y + 34u), selected ? accent : C_MUTED, bg);
     if (index == 2u) {
-        lcd_text_center(x, (uint16_t)(y + h - 36u), w, "SIGNAL", fg, bg, 1);
-        lcd_text_center(x, (uint16_t)(y + h - 24u), w, "GENERATOR", fg, bg, 1);
+        if (i18n_get_language() == LANG_UA) {
+            lcd_text_center(x, (uint16_t)(y + h - 36u), w, "ГЕНЕРАТОР", fg, bg, 1);
+            lcd_text_center(x, (uint16_t)(y + h - 24u), w, "СИГНАЛІВ", fg, bg, 1);
+        } else {
+            lcd_text_center(x, (uint16_t)(y + h - 36u), w, "SIGNAL", fg, bg, 1);
+            lcd_text_center(x, (uint16_t)(y + h - 24u), w, "GENERATOR", fg, bg, 1);
+        }
     } else {
-        lcd_text_center(x, (uint16_t)(y + h - 30u), w, menu_labels[index], fg, bg, 1);
+        lcd_text_center(x, (uint16_t)(y + h - 30u), w, i18n_menu_label(index), fg, bg, 1);
     }
     if (selected) {
         lcd_rect((uint16_t)(x + 8u), (uint16_t)(y + h - 11u), (uint16_t)(w - 16u), 4, accent);
@@ -7136,7 +7311,7 @@ static void draw_mode_menu(void) {
     lcd_rect(0, 0, LCD_WIDTH, LCD_HEIGHT, C_BG);
     draw_battery_status_overlay(C_BG);
 
-    lcd_text(14, 18, "MENU", C_TEXT, C_BG, 3);
+    lcd_text(14, 18, i18n_str(I18N_STR_MENU), C_TEXT, C_BG, 3);
 
     draw_mode_menu_item(0, 6, 62, 74, 154);
     draw_mode_menu_item(1, 86, 62, 74, 154);
@@ -7145,38 +7320,33 @@ static void draw_mode_menu(void) {
 }
 
 static const char *startup_label(void) {
-    if (ui_settings.startup_screen == SETTINGS_START_MENU) {
-        return startup_labels[0];
+    uint8_t screen = ui_settings.startup_screen;
+    if (screen > SETTINGS_START_GEN) {
+        screen = SETTINGS_START_DMM;
     }
-    if (ui_settings.startup_screen == SETTINGS_START_DMM) {
-        return startup_labels[1];
-    }
-    if (ui_settings.startup_screen == SETTINGS_START_SCOPE) {
-        return startup_labels[2];
-    }
-    if (ui_settings.startup_screen == SETTINGS_START_GEN) {
-        return startup_labels[3];
-    }
-    return startup_labels[1];
+    return i18n_startup_label(screen);
 }
 
 static const char *settings_value_text(uint8_t row, char out[12]) {
     (void)out;
     if (row == 0u) {
-        return beep_level_labels[ui_settings.beep_level];
+        return i18n_beep_level_label(ui_settings.beep_level);
     }
     if (row == 1u) {
-        return brightness_level_labels[ui_settings.brightness_level];
+        return i18n_brightness_level_label(ui_settings.brightness_level);
     }
     if (row == 2u) {
         return startup_label();
     }
     if (row == 3u) {
         uint8_t sleep = ui_settings.sleep_enabled < SETTINGS_SLEEP_COUNT ? ui_settings.sleep_enabled : 0u;
-        return sleep_labels[sleep];
+        return i18n_sleep_label(sleep);
+    }
+    if (row == 4u) {
+        return i18n_language_name((ui_language_t)ui_settings.language);
     }
     if (row == SETTINGS_BOOT_EXPORT_ROW) {
-        return "EXPORT";
+        return i18n_str(I18N_STR_EXPORT);
     }
     return FIRMWARE_VERSION_TEXT;
 }
@@ -7189,11 +7359,6 @@ enum {
 };
 
 static void draw_boot_export_overlay(void) {
-    static const char *const errors[] = {
-        "SAVED AND VERIFIED", "STORAGE BUSY - RETRY", "BOOTLOADER READ PROTECTED",
-        "INVALID BOOTLOADER VECTORS", "STORAGE WRITE ERROR",
-        "NOT ENOUGH FREE SPACE", "BACKUP VERIFY ERROR",
-    };
     char percent[12];
     if (ui.overlay != UI_OVERLAY_SETTINGS || ui.boot_export_state == BOOT_EXPORT_UI_NONE) {
         return;
@@ -7204,20 +7369,20 @@ static void draw_boot_export_overlay(void) {
     uint16_t fg = error ? C_TEXT : C_BG;
     lcd_rect(22, 66, 276, 110, bg);
     lcd_frame(22, 66, 276, 110, error ? C_WARN : C_PANEL_2);
-    lcd_text_center(22, 80, 276, "BOOTLOADER EXPORT", fg, bg, 2);
+    lcd_text_center(22, 80, 276, i18n_str(I18N_STR_BOOT_EXPORT), fg, bg, 2);
     if (ui.boot_export_state == BOOT_EXPORT_UI_CONFIRM) {
-        lcd_text_center(22, 112, 276, "EJECT USB DRIVE FIRST", fg, bg, 1);
-        lcd_text_center(22, 126, 276, "REPLACES EXISTING BACKUP", fg, bg, 1);
-        lcd_text_center(22, 140, 276, "PLAY: EXPORT   MENU: CANCEL", fg, bg, 1);
+        lcd_text_center(22, 112, 276, i18n_str(I18N_STR_BOOT_EJECT_FIRST), fg, bg, 1);
+        lcd_text_center(22, 126, 276, i18n_str(I18N_STR_BOOT_REPLACES_BACKUP), fg, bg, 1);
+        lcd_text_center(22, 140, 276, i18n_str(I18N_STR_BOOT_PROMPT), fg, bg, 1);
     } else if (ui.boot_export_state == BOOT_EXPORT_UI_SAVING) {
         scope_format_u32(percent, ui.boot_export_percent);
         ui_text_append(percent, "%", sizeof(percent));
         lcd_text_center(22, 114, 276, percent, fg, bg, 2);
-        lcd_text_center(22, 145, 276, "READING AND VERIFYING", fg, bg, 1);
+        lcd_text_center(22, 145, 276, i18n_str(I18N_STR_BOOT_READING_VERIFYING), fg, bg, 1);
     } else {
         uint8_t result = ui.boot_export_result;
         lcd_text_center(22, 115, 276,
-                        errors[result <= BOOT_EXPORT_VERIFY_ERROR ? result : BOOT_EXPORT_STORAGE_ERROR],
+                        i18n_boot_export_error(result <= BOOT_EXPORT_VERIFY_ERROR ? result : BOOT_EXPORT_STORAGE_ERROR),
                         fg, bg, 1);
         if (!error) {
             lcd_text_center(22, 143, 276, BOOTLOADER_FILE_NAME, fg, bg, 1);
@@ -7235,15 +7400,15 @@ static void draw_settings_tile(uint8_t row, uint16_t x, uint16_t y, uint16_t w, 
     uint16_t value_color = selectable ? (selected ? accent : C_TEXT) : C_MUTED;
     const char *value_text = settings_value_text(row, value);
     uint8_t value_scale = (row == 2u || lcd_text_width(value_text, 2) <= (uint16_t)(w - 10u)) ? 2u : 1u;
-    uint16_t value_y = (uint16_t)(y + (value_scale == 2u ? 28u : 34u));
+    uint16_t value_y = (uint16_t)(y + (value_scale == 2u ? (h > 50 ? 28u : 24u) : (h > 50 ? 34u : 28u)));
 
     lcd_rect(x, y, w, h, bg);
     lcd_frame(x, y, w, h, selected ? accent : C_GRID);
     lcd_rect(x, y, w, 4, accent);
-    lcd_text((uint16_t)(x + 8u), (uint16_t)(y + 8u), settings_row_labels[row], label_color, bg, 1);
+    lcd_text((uint16_t)(x + 8u), (uint16_t)(y + 7u), i18n_settings_row_label(row), label_color, bg, 1);
     lcd_text_center(x, value_y, w, value_text, value_color, bg, value_scale);
     if (selected) {
-        lcd_rect((uint16_t)(x + 10u), (uint16_t)(y + h - 7u), (uint16_t)(w - 20u), 3, accent);
+        lcd_rect((uint16_t)(x + 10u), (uint16_t)(y + h - 6u), (uint16_t)(w - 20u), 3, accent);
     }
 }
 
@@ -7251,15 +7416,16 @@ static void draw_settings_menu(void) {
     lcd_rect(0, 0, LCD_WIDTH, LCD_HEIGHT, C_BG);
     draw_battery_status_overlay(C_BG);
 
-    lcd_text(14, 18, "SETTINGS", C_TEXT, C_BG, 3);
+    lcd_text(14, 18, i18n_str(I18N_STR_SETTINGS), C_TEXT, C_BG, 3);
     for (uint8_t row = 0; row < SETTINGS_ROW_COUNT; ++row) {
         uint8_t col = (uint8_t)(row % SETTINGS_GRID_COLUMNS);
         uint8_t line = (uint8_t)(row / SETTINGS_GRID_COLUMNS);
+        uint16_t tile_w = (row == 6u) ? 308u : 98u;
         draw_settings_tile(row,
                            (uint16_t)(8u + col * 105u),
-                           (uint16_t)(72u + line * 66u),
-                           98,
-                           56);
+                           (uint16_t)(56u + line * 56u),
+                           tile_w,
+                           50);
     }
 }
 
@@ -7385,11 +7551,15 @@ static void ui_draw_gen_preview_params_scene(void) {
     if (ui.chrome_visible) {
         lcd_rect(10, 55, 220, 136, C_PANEL);
         lcd_rect(10, 55, 5, 136, C_GEN);
-        lcd_text(22, 58, gen_wave_labels[ui.gen_wave], C_GEN, C_PANEL, 3);
+        const char *wname = i18n_gen_wave_label(ui.gen_wave);
+        uint8_t wscale = lcd_text_width(wname, 3) <= 200 ? 3 : 2;
+        lcd_text(22, 58, wname, C_GEN, C_PANEL, wscale);
         draw_gen_wave_preview(22, 101, 204, 76, C_PANEL);
     } else {
         lcd_rect(14, 31, 220, 160, C_BG);
-        lcd_text(18, 31, gen_wave_labels[ui.gen_wave], C_GEN, C_BG, 3);
+        const char *wname = i18n_gen_wave_label(ui.gen_wave);
+        uint8_t wscale = lcd_text_width(wname, 3) <= 200 ? 3 : 2;
+        lcd_text(18, 31, wname, C_GEN, C_BG, wscale);
         draw_gen_wave_preview(14, 68, 220, 123, C_BG);
     }
     draw_gen_param_row(GEN_PARAM_ROW_X, (uint16_t)(Y_SOFT + 4u));
@@ -7567,6 +7737,7 @@ static void ui_switch_mode(ui_mode_t mode) {
         ui.auto_range = 1;
         dmm_hold_active = 0;
         dmm_rel_active = 0;
+        dmm_view_mode = DMM_VIEW_LIVE;
         dmm_stats_reset();
         if (old_mode == UI_MODE_DMM) {
             dmm_set_mode(DMM_MODE_AUTO);
@@ -7588,6 +7759,7 @@ void ui_init(void) {
     battery_update();
     (void)settings_load(&saved);
     ui_settings_copy(&ui_settings, &saved);
+    i18n_set_language((ui_language_t)ui_settings.language);
 
     start_in_menu = ui_settings.startup_screen == SETTINGS_START_MENU ? 1u : 0u;
 
@@ -7885,6 +8057,7 @@ static void dmm_pause_for_menu_overlay(void) {
 static void dmm_apply_selected_mode(void) {
     dmm_hold_active = 0;
     dmm_rel_active = 0;
+    dmm_view_mode = DMM_VIEW_LIVE;
     dmm_stats_reset();
     ui_settings.dmm_mode = ui.dmm_mode;
     settings_note(&ui_settings);
@@ -8414,6 +8587,7 @@ static int8_t scope_h_pos_from_value(void) {
 }
 
 static void ui_apply_saved_runtime_settings(void) {
+    i18n_set_language((ui_language_t)ui_settings.language);
     ui.scope_timebase = ui_settings.scope_timebase;
     ui.scope_display = ui_settings.scope_display;
     ui.scope_cursor_mode = ui_settings.scope_cursor_mode;
@@ -9549,12 +9723,16 @@ static void settings_adjust_current(int8_t dir) {
         cycle_u8(&ui_settings.sleep_enabled, SETTINGS_SLEEP_COUNT, dir);
         ui.sleep_ms = 0;
         ui.sleep_due = 0;
+    } else if (ui.settings_row == 4u) {
+        cycle_u8(&ui_settings.language, LANG_COUNT, dir);
+        i18n_set_language((ui_language_t)ui_settings.language);
     } else {
         (void)dir;
         changed = 0;
     }
     if (changed) {
         settings_note(&ui_settings);
+        settings_flush();
     }
 }
 
@@ -9740,6 +9918,7 @@ static void ui_handle_menu_keys(uint32_t events) {
 
     if (events & KEY_MENU) {
         dmm_pause_for_menu_overlay();
+        settings_flush();
         ui.overlay = UI_OVERLAY_MODE_MENU;
         ui.menu_index = 3;
         ui_render();
@@ -10227,6 +10406,14 @@ void ui_handle_keys(uint32_t events) {
         return;
     }
 
+    if ((events & KEY_CH1_LONG) && ui.mode == UI_MODE_DMM && ui.overlay == UI_OVERLAY_NONE) {
+        if (dmm_stats_supported_mode()) {
+            dmm_view_mode = (uint8_t)((dmm_view_mode + 1u) % DMM_VIEW_COUNT);
+            ui_render_dmm_reading();
+        }
+        return;
+    }
+
     if (events & KEY_SAVE_LONG) {
         capture_screenshot_now();
         return;
@@ -10360,6 +10547,7 @@ void ui_handle_keys(uint32_t events) {
             ui.auto_range = 1;
             dmm_hold_active = 0;
             dmm_rel_active = 0;
+            dmm_view_mode = DMM_VIEW_LIVE;
             dmm_stats_reset();
             dmm_set_mode(DMM_MODE_AUTO);
             ui_settings.dmm_mode = DMM_MODE_AUTO;
@@ -10454,6 +10642,9 @@ void ui_handle_keys(uint32_t events) {
         if (ui.mode == UI_MODE_SCOPE) {
             scope_channel_key(1);
             ui_render_local_change();
+        } else if (ui.mode == UI_MODE_DMM && dmm_stats_supported_mode()) {
+            dmm_stats_reset();
+            ui_render_dmm_reading();
         }
         return;
     }
