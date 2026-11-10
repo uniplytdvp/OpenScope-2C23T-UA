@@ -59,7 +59,7 @@
   - **Спектроаналізатор (FFT)** з вибором віконних функцій та режимів усереднення / фіксації піків (Max-Hold).
   - Побудова АЧХ (**Bode Plot**).
 - **Розширений генератор сигналів:**
-  - 15+ вбудованих форм сигналу: синус, меандр, трикутник, пила, напівхвиля, повна хвиля, шум, постійний струм (DC), сходинка, експонента, мультитон, імпульс Сінкера, імпульс Лоренца.
+  - **вбудовані форми сигналу:** синус, меандр, трикутник, пила, напівхвиля, повна хвиля, шум, постійний струм (DC), сходинка, експонента, мультитон, імпульс Сінкера, імпульс Лоренца.
   - **Довільні форми сигналу (Arbitrary CSV):** відтворення користувацьких таблиць до 2048 точок із файлів `.csv` у корені USB-диска.
   - **Меню модуляції та качання частоти (довге натискання `CH1` у генераторі):** лінійний/логарифмічний **Sweep** та частотна модуляція (**FM**).
 - **Збереження скріншотів** у форматі `.BMP` на вбудований накопичувач та **безпечний експорт Bootloader** із перевіркою CRC32.
@@ -70,6 +70,12 @@
 |---|---|---|
 | <img src="https://github.com/user-attachments/assets/17989306-4eee-4da2-8fed-e7fec0660791" width="320"/> | <img src="https://github.com/user-attachments/assets/371b7de3-4b3e-49d5-ad8f-349b1c0e128d" width="320"/> | <img src="https://github.com/user-attachments/assets/eeacebf9-699b-4f2b-977f-c0a2f7650e51" width="320"/> |
 | <img src="https://github.com/user-attachments/assets/47e9052f-8960-4eac-9fb4-16ef131bd813" width="320"/> | <img src="https://github.com/user-attachments/assets/3981d5a3-6cb1-40ab-9c0e-28fe0b2cc03d" width="320"/> | <img src="https://github.com/user-attachments/assets/66c54716-2391-4c1f-9770-989d7f27e5eb" width="320"/> |
+
+### Скріншоти українського інтерфейсу
+| | | |
+|---|---|---|
+|<img src="https://github.com/user-attachments/files/34631652/img_10.bmp"/> | <img src="https://github.com/user-attachments/files/34631663/img_11.bmp"/> | <img src="https://github.com/user-attachments/files/34631671/img_12.bmp"/> |
+| <img src="https://github.com/user-attachments/files/34631677/img_14.bmp"/> | <img src="https://github.com/user-attachments/files/34631674/img_13.bmp"/> | <img src="https://github.com/user-attachments/files/34631979/img_15.bmp"/> |
 
 ---
 
@@ -106,34 +112,6 @@ python build.py
 Якщо у вас встановлено **Git for Windows**, до його складу входить середовище **Git Bash**, яке має всі необхідні POSIX-утиліти для виконання тестів із `Makefile`. Запустити всі 16 регресійних тестів можна командою з PowerShell:
 ```powershell
 & "C:\Program Files\Git\bin\bash.exe" -c "make test"
-```
-
----
-
-## Структура гілок репозиторію та синхронізація з авторами
-
-У цьому репозиторії підтримується поділ гілок:
-
-- **`main`** — головна робоча гілка нашого проекту. Тут знаходяться українська локалізація, кастомні шрифти, статистика мультиметра `MIN/MAX`, скрипт `build.py` та всі наші доробки.
-- **`upstream-main`** — чисте дзеркало гілки `main` оригінального репозиторію [`rosenrot00/OpenScope-2C23T`](https://github.com/rosenrot00/OpenScope-2C23T). **У цю гілку не вносяться власні зміни.** Вона використовується виключно для отримання оновлень від авторів першоджерела.
-
-### Як підтягнути нові зміни від авторів першоджерела в майбутньому:
-```powershell
-# 1. Отримати свіжі коміти з оригінального репозиторію rosenrot00
-git fetch upstream
-
-# 2. Оновити локальне дзеркало upstream-main та відправити його на наш GitHub
-git checkout upstream-main
-git merge --ff-only upstream/main
-git push origin upstream-main
-
-# 3. Перейти в нашу робочу гілку main і влити в неї оновлення
-git checkout main
-git merge upstream-main
-
-# 4. Перевірити збирання та відправити оновлений main на GitHub
-python build.py
-git push origin main
 ```
 
 ---
