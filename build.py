@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-VERSION = "v2026.11.1"
+VERSION = "v2026.11.3"
 CLANG = "clang"
 ROOT = Path(__file__).parent.resolve()
 SRC_DIR = ROOT / "src"
@@ -47,8 +47,8 @@ TARGETS = [
     {
         "name": "hw4.0",
         "app_base": "0x08007000",
-        "app_flash_size": "0x00038000",
-        "fw_stage_base": "0x08040000",
+        "app_flash_size": "0x00045000",
+        "fw_stage_base": "0x08050000",
         "hw40": "1",
         "bitstream": "src/fpga_bitstream_hw4.c",
         "output_bin": f"F2C23T-{VERSION}-HW4.0-08007000.bin",
