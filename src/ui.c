@@ -265,9 +265,9 @@ static ui_state_t ui = {
 
 static uint8_t ui_load_pct;
 static uint8_t ui_load_peak_pct;
-static uint16_t ui_render_ms_x10;
+static uint16_t ui_render_ms_x10 __attribute__((unused));
 static uint16_t scope_frame_age_ms;
-static uint16_t scope_frame_interval_x10ms;
+static uint16_t scope_frame_interval_x10ms __attribute__((unused));
 static uint32_t ui_last_render_ticks;
 static uint32_t ui_fw_update_sequence;
 static scope_trace_cache_t scope_trace_cache[2];
@@ -300,7 +300,7 @@ static uint8_t sweep_stop_unit = 0;
 static uint8_t fm_freq_unit = 0;
 static uint16_t gen_fm_phase;
 static uint8_t arb_file_index;
-static uint8_t arb_loaded;
+static uint8_t arb_loaded __attribute__((unused));
 static uint16_t arb_sample_count;
 static uint8_t arb_samples[2048];
 static uint8_t scope_samples[SCOPE_SAMPLE_BYTES] __attribute__((aligned(4)));

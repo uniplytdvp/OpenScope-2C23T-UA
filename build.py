@@ -97,8 +97,6 @@ def build_target(cfg):
         "-Wall",
         "-Wextra",
         "-Werror",
-        "-Wno-unused-but-set-variable",
-        "-Wno-unused-but-set-global",
         "-I", str(SRC_DIR),
         f"-DAPP_BASE_ADDR={app_base}u",
         f"-DAPP_FLASH_SIZE_BYTES={app_flash_size}u",

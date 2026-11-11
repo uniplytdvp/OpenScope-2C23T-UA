@@ -45,8 +45,6 @@ CFLAGS := \
 	-Wall \
 	-Wextra \
 	-Werror \
-	-Wno-unused-but-set-variable \
-	-Wno-unused-but-set-global \
 	-I src \
 	-DAPP_BASE_ADDR=$(APP_BASE)u \
 	-DAPP_FLASH_SIZE_BYTES=$(APP_FLASH_SIZE)u \
