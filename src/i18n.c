@@ -240,40 +240,40 @@ const char *i18n_dmm_unit(const char *raw) {
         return "";
     }
     if (raw[0] == 'V' && !raw[1]) {
-        return current_language == LANG_UA ? "В" : "V";
+        return "V";
     }
     if ((raw[0] == 'M' || raw[0] == 'm') && (raw[1] == 'V' || raw[1] == 'v') && !raw[2]) {
-        return current_language == LANG_UA ? "мВ" : "mV";
+        return "mV";
     }
     if (raw[0] == 'A' && !raw[1]) {
-        return current_language == LANG_UA ? "А" : "A";
+        return "A";
     }
     if ((raw[0] == 'M' || raw[0] == 'm') && (raw[1] == 'A' || raw[1] == 'a') && !raw[2]) {
-        return current_language == LANG_UA ? "мА" : "mA";
+        return "mA";
     }
     if ((raw[0] == 'U' || raw[0] == 'u') && (raw[1] == 'A' || raw[1] == 'a') && !raw[2]) {
-        return current_language == LANG_UA ? "µА" : "µA";
+        return "µA";
     }
     if (raw[0] == 'O' && raw[1] == 'H' && raw[2] == 'M' && !raw[3]) {
         return "Ω";
     }
     if (raw[0] == 'K' && raw[1] == 'O' && raw[2] == 'H' && raw[3] == 'M' && !raw[4]) {
-        return current_language == LANG_UA ? "кΩ" : "kΩ";
+        return "kΩ";
     }
     if (raw[0] == 'M' && raw[1] == 'O' && raw[2] == 'H' && raw[3] == 'M' && !raw[4]) {
-        return current_language == LANG_UA ? "МΩ" : "MΩ";
+        return "MΩ";
     }
     if (raw[0] == 'F' && !raw[1]) {
-        return current_language == LANG_UA ? "Ф" : "F";
+        return "F";
     }
     if ((raw[0] == 'M' || raw[0] == 'm') && (raw[1] == 'F' || raw[1] == 'f') && !raw[2]) {
-        return current_language == LANG_UA ? "мФ" : "mF";
+        return "mF";
     }
     if ((raw[0] == 'U' || raw[0] == 'u') && (raw[1] == 'F' || raw[1] == 'f') && !raw[2]) {
-        return current_language == LANG_UA ? "µФ" : "µF";
+        return "µF";
     }
     if ((raw[0] == 'N' || raw[0] == 'n') && (raw[1] == 'F' || raw[1] == 'f') && !raw[2]) {
-        return current_language == LANG_UA ? "nФ" : "nF";
+        return "nF";
     }
     if (raw[0] == 'D' && raw[1] == 'E' && raw[2] == 'G' && !raw[3]) {
         return "°C";
@@ -377,7 +377,7 @@ static const char *const i18n_tbl_dmm_mode_short[LANG_COUNT][13] = {
         "CONT", "TEMP", "AC HI", "DC HI", "AC LO", "DC LO",
     },
     [LANG_UA] = {
-        "АВТО", "DC В", "AC В", "ОПІР", "ДІОД", "ЄМН", "ФАЗА",
+        "АВТО", "DC V", "AC V", "ОПІР", "ДІОД", "ЄМН", "ФАЗА",
         "ДЗВ", "ТЕМП", "AC A", "DC A", "AC mA", "DC mA",
     },
 };
@@ -389,7 +389,7 @@ const char *i18n_dmm_mode_short(uint8_t index) {
 
 static const char *const i18n_tbl_dmm_group_labels[LANG_COUNT][4] = {
     [LANG_EN] = {"V/OHM", "TEST", "SENSE", "CURRENT"},
-    [LANG_UA] = {"В/ОМ", "ТЕСТ", "ДАТЧИК", "СТРУМ"},
+    [LANG_UA] = {"V/Ω", "ТЕСТ", "ДАТЧИК", "СТРУМ"},
 };
 
 const char *i18n_dmm_group_label(uint8_t group) {

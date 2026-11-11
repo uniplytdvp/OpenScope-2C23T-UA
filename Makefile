@@ -139,7 +139,7 @@ $(BUILD_ROOT)/tests/fpga_timing-old $(BUILD_ROOT)/tests/fpga_timing-hw4: tests/f
 	@mkdir -p $(dir $@)
 	$(CLANG) $(HOST_TEST_FLAGS) -DHW_TARGET_HW40=$(if $(filter %-hw4,$@),1,0) $< $(HOST_TEST_LINK) -o $@
 
-$(BUILD_ROOT)/tests/dmm-old $(BUILD_ROOT)/tests/dmm-hw4: tests/dmm.c src/dmm.c src/dmm.h src/ui.c src/settings.h src/hw.h Makefile
+$(BUILD_ROOT)/tests/dmm-old $(BUILD_ROOT)/tests/dmm-hw4: tests/dmm.c src/dmm.c src/dmm.h src/ui.c src/font.c src/settings.h src/hw.h Makefile
 	@mkdir -p $(dir $@)
 	$(CLANG) $(HOST_TEST_FLAGS) -DHW_TARGET_HW40=$(if $(filter %-hw4,$@),1,0) -DEXPECTED_FW_VERSION='"$(VERSION)"' $< $(HOST_TEST_LINK) -o $@
 

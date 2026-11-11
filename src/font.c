@@ -107,13 +107,7 @@ const uint8_t *font5x7_get_codepoint(uint16_t cp) {
             cp = (uint16_t)(cp - ('a' - 'A'));
         }
     } else if (cp >= 0x0430 && cp <= 0x044F) {
-        if (cp == 0x043C) {
-            cp = 'm'; // Cyrillic lowercase 'м' (milli) -> 'm'
-        } else if (cp == 0x043D) {
-            cp = 'n'; // Cyrillic lowercase 'н' (nano) -> 'n'
-        } else {
-            cp = (uint16_t)(cp - 0x20); // Cyrillic lowercase to uppercase
-        }
+        cp = (uint16_t)(cp - 0x20); // Cyrillic lowercase to uppercase
     } else if (cp == 0x0491) {
         cp = 0x0490; // ґ -> Ґ
     } else if (cp == 0x0454) {

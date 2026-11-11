@@ -11,6 +11,7 @@
 #undef volatile
 #undef __asm__
 #include "../src/ui.c"
+#include "../src/font.c"
 
 static void make_frame(const char digits[4], unsigned dots, uint8_t prefix,
                        uint8_t flags_b, uint8_t flags_c, uint8_t frame[9]) {
@@ -311,18 +312,18 @@ static void test_dmm_i18n_units_and_labels(void) {
 
     // Test Ukrainian translations
     i18n_set_language(LANG_UA);
-    assert(strcmp(i18n_dmm_unit("V"), "В") == 0);
-    assert(strcmp(i18n_dmm_unit("MV"), "мВ") == 0);
-    assert(strcmp(i18n_dmm_unit("A"), "А") == 0);
-    assert(strcmp(i18n_dmm_unit("MA"), "мА") == 0);
-    assert(strcmp(i18n_dmm_unit("UA"), "µА") == 0);
+    assert(strcmp(i18n_dmm_unit("V"), "V") == 0);
+    assert(strcmp(i18n_dmm_unit("MV"), "mV") == 0);
+    assert(strcmp(i18n_dmm_unit("A"), "A") == 0);
+    assert(strcmp(i18n_dmm_unit("MA"), "mA") == 0);
+    assert(strcmp(i18n_dmm_unit("UA"), "µA") == 0);
     assert(strcmp(i18n_dmm_unit("OHM"), "Ω") == 0);
-    assert(strcmp(i18n_dmm_unit("KOHM"), "кΩ") == 0);
-    assert(strcmp(i18n_dmm_unit("MOHM"), "МΩ") == 0);
-    assert(strcmp(i18n_dmm_unit("F"), "Ф") == 0);
-    assert(strcmp(i18n_dmm_unit("MF"), "мФ") == 0);
-    assert(strcmp(i18n_dmm_unit("UF"), "µФ") == 0);
-    assert(strcmp(i18n_dmm_unit("NF"), "nФ") == 0);
+    assert(strcmp(i18n_dmm_unit("KOHM"), "kΩ") == 0);
+    assert(strcmp(i18n_dmm_unit("MOHM"), "MΩ") == 0);
+    assert(strcmp(i18n_dmm_unit("F"), "F") == 0);
+    assert(strcmp(i18n_dmm_unit("MF"), "mF") == 0);
+    assert(strcmp(i18n_dmm_unit("UF"), "µF") == 0);
+    assert(strcmp(i18n_dmm_unit("NF"), "nF") == 0);
     assert(strcmp(i18n_dmm_unit("DEG"), "°C") == 0);
     assert(strcmp(i18n_str(I18N_STR_OPEN), "ОБРИВ") == 0);
     assert(strcmp(i18n_str(I18N_STR_LIVE), "ФАЗА") == 0);
@@ -343,11 +344,11 @@ static void test_dmm_i18n_units_and_labels(void) {
     dmm_valid = 1;
     assert(strcmp(dmm_live_display_value(), "АВТО") == 0);
 
-    // Test dmm_display_unit reflects localized unit
+    // Test dmm_display_unit reflects standard unit in both languages
     setup(10); // DC HI mode, mA
     strcpy(dmm_unit, "MA");
     dmm_valid = 1;
-    assert(strcmp(dmm_display_unit(), "мА") == 0);
+    assert(strcmp(dmm_display_unit(), "mA") == 0);
 
     i18n_set_language(LANG_EN);
     assert(strcmp(dmm_display_unit(), "mA") == 0);
@@ -355,6 +356,15 @@ static void test_dmm_i18n_units_and_labels(void) {
     strcpy(dmm_value, "AUTO");
     dmm_valid = 1;
     assert(strcmp(dmm_live_display_value(), "AUTO") == 0);
+
+    // Test font codepoint behavior: 'm' and 'n' lowercase preserved, Cyrillic 'м'/'н' -> 'M'/'H'
+    assert(font5x7_get_codepoint('m') != font5x7_get_codepoint('M'));
+    assert(font5x7_get_codepoint('n') != font5x7_get_codepoint('N'));
+    assert(font5x7_get_codepoint('a') == font5x7_get_codepoint('A'));
+    assert(font5x7_get_codepoint(0x043C) == font5x7_get_codepoint('M')); // Cyrillic lowercase 'м' -> 'M'
+    assert(font5x7_get_codepoint(0x043D) == font5x7_get_codepoint('H')); // Cyrillic lowercase 'н' -> 'H'
+    assert(font5x7_get_codepoint(0x041C) == font5x7_get_codepoint('M')); // Cyrillic uppercase 'М' -> 'M'
+    assert(font5x7_get_codepoint(0x041D) == font5x7_get_codepoint('H')); // Cyrillic uppercase 'Н' -> 'H'
 }
 
 void delay_ms(uint32_t ms) { (void)ms; }
