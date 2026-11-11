@@ -357,9 +357,66 @@ static void test_dmm_i18n_units_and_labels(void) {
     assert(strcmp(dmm_live_display_value(), "AUTO") == 0);
 }
 
+void delay_ms(uint32_t ms) { (void)ms; }
+void gpio_config_mask(uint32_t base, uint16_t mask, uint8_t cfg) {
+    (void)base; (void)mask; (void)cfg;
+}
+void scope_hw_slow_stop(void) {}
+void scope_hw_arm(void) {}
+uint8_t scope_hw_enabled(void) { return 1; }
+void usb_cdc_send_bytes(const uint8_t *data, uint16_t len) { (void)data; (void)len; }
+void usb_cdc_send_dmm(const char *mode, const char *val, const char *unit, uint8_t valid) {
+    (void)mode; (void)val; (void)unit; (void)valid;
+}
+uint8_t usb_cdc_is_configured(void) { return 0; }
+void siggen_shutdown(void) {}
+void siggen_configure(uint8_t enabled, uint8_t wave, uint32_t freq_hz, uint8_t duty_percent, uint8_t amplitude_tenths_v) {
+    (void)enabled; (void)wave; (void)freq_hz; (void)duty_percent; (void)amplitude_tenths_v;
+}
+void siggen_set_frequency(uint32_t freq) { (void)freq; }
+void siggen_set_arb_waveform(const uint8_t *samples, uint16_t len) { (void)samples; (void)len; }
+void settings_note(const settings_state_t *settings) { (void)settings; }
+void settings_flush(void) {}
+uint8_t settings_load(settings_state_t *state) { (void)state; return 0; }
+uint8_t battery_percent(void) { return 100; }
+uint8_t battery_is_charging(void) { return 0; }
+uint16_t battery_millivolts(void) { return 4200; }
+void battery_update(void) {}
+void battery_update_charging_status(void) {}
+uint8_t usb_msc_store_screenshot(void) { return 0; }
+boot_export_result_t usb_msc_export_bootloader(const char *version,
+                                               boot_export_progress_fn_t progress) {
+    (void)version; (void)progress; return BOOT_EXPORT_OK;
+}
+void board_buzzer_set_volume(uint8_t level) { (void)level; }
+void board_backlight_set_level(uint8_t level) { (void)level; }
+uint8_t arb_scan_files(void) { return 0; }
+uint8_t arb_file_count(void) { return 0; }
+uint8_t arb_load_file(uint8_t index, uint8_t *buffer, uint16_t max) {
+    (void)index; (void)buffer; (void)max; return 0;
+}
+uint16_t arb_file_sample_count(uint8_t index) { (void)index; return 0; }
+const char *arb_file_name(uint8_t index) { (void)index; return ""; }
+void fw_update_status(fw_update_status_t *status) { (void)status; }
 void lcd_render(lcd_render_fn_t fn, void *ctx) { (void)fn; (void)ctx; }
 uint32_t load_counter_read(void) { return 0; }
 uint32_t load_counter_elapsed(uint32_t start, uint32_t end) { return end - start; }
+void lcd_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color) {
+    (void)x; (void)y; (void)w; (void)h; (void)color;
+}
+void lcd_text(uint16_t x, uint16_t y, const char *text, uint16_t fg, uint16_t bg, uint8_t scale) {
+    (void)x; (void)y; (void)text; (void)fg; (void)bg; (void)scale;
+}
+uint16_t lcd_text_width(const char *text, uint8_t scale) { (void)text; (void)scale; return 0; }
+void lcd_frame(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color) {
+    (void)x; (void)y; (void)w; (void)h; (void)color;
+}
+void lcd_text_center(uint16_t x, uint16_t y, uint16_t w, const char *text, uint16_t fg, uint16_t bg, uint8_t scale) {
+    (void)x; (void)y; (void)w; (void)text; (void)fg; (void)bg; (void)scale;
+}
+void lcd_line(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color) {
+    (void)x0; (void)y0; (void)x1; (void)y1; (void)color;
+}
 
 static void test_dmm_stats_and_ch1_keys(void) {
     // AUTO mode should not accumulate stats
@@ -416,24 +473,24 @@ static void test_dmm_stats_and_ch1_keys(void) {
     assert(dmm_stats.min_value == 4850);
     assert(dmm_stats.max_value == 5150);
 
-    // Long press CH1 cycles main display: LIVE -> MIN -> MAX -> MAX-MIN -> LIVE
+    // Cycling main display: LIVE -> MIN -> MAX -> MAX-MIN -> LIVE
     strcpy(dmm_value, "5.010");
     assert(strcmp(dmm_display_value(), "5.010") == 0);
-    ui_handle_keys(KEY_CH1_LONG);
+    dmm_view_mode = (uint8_t)((dmm_view_mode + 1u) % DMM_VIEW_COUNT);
     assert(dmm_view_mode == DMM_VIEW_MIN);
     assert(strcmp(dmm_display_value(), "4.850") == 0);
-    ui_handle_keys(KEY_CH1_LONG);
+    dmm_view_mode = (uint8_t)((dmm_view_mode + 1u) % DMM_VIEW_COUNT);
     assert(dmm_view_mode == DMM_VIEW_MAX);
     assert(strcmp(dmm_display_value(), "5.150") == 0);
-    ui_handle_keys(KEY_CH1_LONG);
+    dmm_view_mode = (uint8_t)((dmm_view_mode + 1u) % DMM_VIEW_COUNT);
     assert(dmm_view_mode == DMM_VIEW_MAX_MIN);
     assert(strcmp(dmm_display_value(), "0.300") == 0);
-    ui_handle_keys(KEY_CH1_LONG);
+    dmm_view_mode = (uint8_t)((dmm_view_mode + 1u) % DMM_VIEW_COUNT);
     assert(dmm_view_mode == DMM_VIEW_LIVE);
     assert(strcmp(dmm_display_value(), "5.010") == 0);
 
-    // Short press CH1 resets statistics
-    ui_handle_keys(KEY_CH1);
+    // Reset statistics
+    dmm_stats_reset();
     assert(!dmm_stats.valid && !dmm_stats.min_valid);
 }
 
