@@ -95,6 +95,8 @@ typedef enum {
     I18N_STR_ZERO,
     I18N_STR_BASELINE_CAL,
     I18N_STR_REMOVE_PROBE_WAIT,
+    I18N_STR_DELTA,
+    I18N_STR_CURSOR,
 
     // Signal generator sweep & FM menu
     I18N_STR_SWEEP_MODULATION,

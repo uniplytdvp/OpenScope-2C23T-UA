@@ -617,22 +617,22 @@ enum {
     SCOPE_TIMEBASE_COUNT = sizeof(scope_timebase_unit_ns) / sizeof(scope_timebase_unit_ns[0]),
 };
 static const char *const scope_timebases[] = {
-    "50NS", "100NS", "200NS", "500NS", "1US", "2US", "5US",
-    "10US", "20US", "50US", "100US", "200US", "500US",
-    "1MS", "2MS", "5MS", "10MS", "20MS", "50MS",
-    "100MS", "200MS", "500MS", "1S", "2S", "5S", "10S",
+    "50ns", "100ns", "200ns", "500ns", "1µs", "2µs", "5µs",
+    "10µs", "20µs", "50µs", "100µs", "200µs", "500µs",
+    "1ms", "2ms", "5ms", "10ms", "20ms", "50ms",
+    "100ms", "200ms", "500ms", "1s", "2s", "5s", "10s",
 };
 static const char *const scope_timebases_short[] = {
-    "50N", "100N", "200N", "500N", "1U", "2U", "5U",
-    "10U", "20U", "50U", "100U", "200U", "500U",
-    "1M", "2M", "5M", "10M", "20M", "50M",
-    "100M", "200M", "500M", "1S", "2S", "5S", "10S",
+    "50ns", "100ns", "200ns", "500ns", "1µs", "2µs", "5µs",
+    "10µs", "20µs", "50µs", "100µs", "200µs", "500µs",
+    "1ms", "2ms", "5ms", "10ms", "20ms", "50ms",
+    "100ms", "200ms", "500ms", "1s", "2s", "5s", "10s",
 };
 static const char *const scope_vdivs_short[] = {
-    "20M", "50M", "100M", "200M", "500M", "1V", "2V", "5V", "10V",
+    "20mV", "50mV", "100mV", "200mV", "500mV", "1V", "2V", "5V", "10V",
 };
 static const char *const scope_vdivs_x10_short[] = {
-    "200M", "500M", "1V", "2V", "5V", "10V", "20V", "50V", "100V",
+    "200mV", "500mV", "1V", "2V", "5V", "10V", "20V", "50V", "100V",
 };
 static const uint32_t scope_vdiv_base_mv[] = {20u, 50u, 100u, 200u, 500u, 1000u, 2000u, 5000u, 10000u};
 static const uint16_t scope_vdiv_range_code[] = {1000u, 400u, 200u, 100u, 40u, 20u, 10u, 4u, 2u};
@@ -1529,12 +1529,12 @@ static const char *scope_cursor_label(void) {
     uint8_t mode = scope_safe_cursor();
 
     if (scope_fft_src == 4u && mode == SCOPE_CURSOR_BODE) {
-        if (bode_cursor_sub == 0u) return "F CUR";
-        if (bode_cursor_sub == 1u) return "DB CUR";
-        return "PH CUR";
+        if (bode_cursor_sub == 0u) return i18n_get_language() == LANG_UA ? "КУРС F" : "F CUR";
+        if (bode_cursor_sub == 1u) return i18n_get_language() == LANG_UA ? "КУРС DB" : "DB CUR";
+        return i18n_get_language() == LANG_UA ? "КУРС PH" : "PH CUR";
     }
     if ((scope_fft_src == 1u || scope_fft_src == 2u) && mode == SCOPE_CURSOR_TIME) {
-        return "F CUR";
+        return i18n_get_language() == LANG_UA ? "КУРС F" : "F CUR";
     }
     return i18n_scope_cursor_label(mode);
 }
@@ -1543,8 +1543,8 @@ static const char *scope_cursor_chip_label(void) {
     uint8_t mode = scope_safe_cursor();
 
     if (scope_fft_src == 4u && mode == SCOPE_CURSOR_BODE) {
-        if (bode_cursor_sub == 1u) return "DB";
-        if (bode_cursor_sub == 2u) return "DEG";
+        if (bode_cursor_sub == 1u) return "dB";
+        if (bode_cursor_sub == 2u) return "°";
         return "F";
     }
     if ((scope_fft_src == 1u || scope_fft_src == 2u) && mode == SCOPE_CURSOR_TIME) {
@@ -1578,28 +1578,112 @@ static const char *scope_vdiv_chip_label_for_channel(uint8_t idx) {
     return scope_probe_x10[idx] ? scope_vdivs_x10_short[vdiv] : scope_vdivs_short[vdiv];
 }
 
-static void draw_scope_scale_status(uint16_t y, uint16_t bg) {
-    char ch1[10];
-    char ch2[10];
+static void split_value_unit(const char *src, char *num, char *unit, uint8_t max_len) {
+    uint8_t i = 0, j = 0;
+    num[0] = 0;
+    unit[0] = 0;
+    if (!src) return;
 
-    if (scope_ch_enabled[0]) {
-        ch1[0] = 'C';
-        ch1[1] = 'H';
-        ch1[2] = '1';
-        ch1[3] = ' ';
-        scope_text_copy(&ch1[4], scope_vdiv_chip_label_for_channel(0), 6);
-        lcd_text(0, y, ch1, C_CH1, bg, 2);
+    while (src[i] && ((src[i] >= '0' && src[i] <= '9') || src[i] == '.' || src[i] == '-' || src[i] == '+' || src[i] == ' ')) {
+        if (i + 1 < max_len) {
+            num[i] = src[i];
+        }
+        i++;
     }
-    lcd_text_center(96, y, 72, scope_timebase_label(), C_TEXT, bg, 2);
+    while (i > 0 && num[i - 1] == ' ') {
+        i--;
+    }
+    num[i < max_len ? i : max_len - 1] = 0;
+
+    uint8_t has_digit = 0;
+    for (uint8_t k = 0; num[k]; k++) {
+        if (num[k] >= '0' && num[k] <= '9') {
+            has_digit = 1;
+            break;
+        }
+    }
+    if (!has_digit) {
+        uint8_t k = 0;
+        while (src[k] && k + 1 < max_len) {
+            num[k] = src[k];
+            k++;
+        }
+        num[k] = 0;
+        unit[0] = 0;
+        return;
+    }
+
+    while (src[i] && j + 1 < max_len) {
+        unit[j++] = src[i++];
+    }
+    unit[j] = 0;
+}
+
+static void draw_chip_value_with_unit(uint16_t x, uint16_t y, uint16_t w, const char *value, uint16_t fg, uint16_t bg, uint16_t *rendered_w) {
+    char num[16];
+    char unit[16];
+    split_value_unit(value, num, unit, sizeof(num));
+
+    if (unit[0]) {
+        uint16_t w_num = lcd_text_width(num, 2);
+        uint16_t w_unit = lcd_text_width(unit, 1);
+        uint16_t total_w = (uint16_t)(w_num + 1u + w_unit);
+        if (total_w <= (uint16_t)(w - 4u)) {
+            uint16_t start_x = (uint16_t)(x + (w - total_w) / 2u);
+            lcd_text(start_x, (uint16_t)(y + 13u), num, fg, bg, 2);
+            lcd_text((uint16_t)(start_x + w_num + 1u), (uint16_t)(y + 19u), unit, fg, bg, 1);
+            if (rendered_w) *rendered_w = total_w;
+            return;
+        }
+    }
+    uint8_t value_scale = lcd_text_width(value, 2) <= (uint16_t)(w - 8u) ? 2u : 1u;
+    uint16_t value_y = (uint16_t)(y + (value_scale == 2u ? 13u : 18u));
+    lcd_text_center(x, value_y, w, value, fg, bg, value_scale);
+    if (rendered_w) *rendered_w = lcd_text_width(value, value_scale);
+}
+
+static void draw_scope_scale_status(uint16_t y, uint16_t bg) {
+    if (scope_ch_enabled[0]) {
+        char num[16], unit[16];
+        const char *vdiv = scope_vdiv_chip_label_for_channel(0);
+        split_value_unit(vdiv, num, unit, sizeof(num));
+        uint16_t w_num = lcd_text_width(num, 2);
+        lcd_rect(0, y, 96, 16, bg);
+        lcd_text(0, y, "CH1", C_CH1, bg, 2);
+        lcd_text(40, y, num, C_CH1, bg, 2);
+        if (unit[0]) {
+            lcd_text((uint16_t)(40u + w_num + 1u), (uint16_t)(y + 6u), unit, C_CH1, bg, 1);
+        }
+    }
+    {
+        char num[16], unit[16];
+        const char *tb = scope_timebase_label();
+        split_value_unit(tb, num, unit, sizeof(num));
+        lcd_rect(96, y, 72, 16, bg);
+        if (unit[0]) {
+            uint16_t w_num = lcd_text_width(num, 2);
+            uint16_t w_unit = lcd_text_width(unit, 1);
+            uint16_t total_w = (uint16_t)(w_num + 1u + w_unit);
+            uint16_t start_x = (uint16_t)(96u + (72u - total_w) / 2u);
+            lcd_text(start_x, y, num, C_TEXT, bg, 2);
+            lcd_text((uint16_t)(start_x + w_num + 1u), (uint16_t)(y + 6u), unit, C_TEXT, bg, 1);
+        } else {
+            lcd_text_center(96, y, 72, tb, C_TEXT, bg, 2);
+        }
+    }
     lcd_text_center(168, y, 56, ui.running ? (scope_slow_roll_active() ? i18n_str(I18N_STR_ROLL) : i18n_str(I18N_STR_RUN)) : i18n_str(I18N_STR_HOLD),
                     ui.running ? C_DMM : C_WARN, bg, 2);
     if (scope_ch_enabled[1]) {
-        ch2[0] = 'C';
-        ch2[1] = 'H';
-        ch2[2] = '2';
-        ch2[3] = ' ';
-        scope_text_copy(&ch2[4], scope_vdiv_chip_label_for_channel(1), 6);
-        lcd_text(224, y, ch2, C_CH2, bg, 2);
+        char num[16], unit[16];
+        const char *vdiv = scope_vdiv_chip_label_for_channel(1);
+        split_value_unit(vdiv, num, unit, sizeof(num));
+        uint16_t w_num = lcd_text_width(num, 2);
+        lcd_rect(224, y, 96, 16, bg);
+        lcd_text(224, y, "CH2", C_CH2, bg, 2);
+        lcd_text((uint16_t)(224u + 40u), y, num, C_CH2, bg, 2);
+        if (unit[0]) {
+            lcd_text((uint16_t)(224u + 40u + w_num + 1u), (uint16_t)(y + 6u), unit, C_CH2, bg, 1);
+        }
     }
 }
 
@@ -2679,17 +2763,15 @@ static void draw_scope_param_chip(uint16_t x, uint16_t y, uint16_t w, uint8_t pa
     uint16_t chip_bg = active ? accent : C_PANEL_2;
     uint16_t fg = active ? C_BG : C_MUTED;
     const char *value = scope_param_value(param);
-    uint8_t value_scale = lcd_text_width(value, 2) <= w ? 2u : 1u;
-    uint16_t value_y = (uint16_t)(y + (value_scale == 2u ? 13u : 18u));
+    uint16_t rendered_w = 0;
 
     lcd_rect(x, y, w, 32, chip_bg);
     lcd_rect(x, y, w, 2, accent);
     lcd_text((uint16_t)(x + 6u), (uint16_t)(y + 4u), scope_param_label(param), fg, chip_bg, 1);
-    lcd_text_center(x, value_y, w, value, fg, chip_bg, value_scale);
+    draw_chip_value_with_unit(x, y, w, value, fg, chip_bg, &rendered_w);
     if (active) {
-        uint16_t text_w = lcd_text_width(value, value_scale);
-        uint16_t underline_w = text_w;
-        if (underline_w > w - 12u) {
+        uint16_t underline_w = rendered_w;
+        if (underline_w > (uint16_t)(w - 12u)) {
             underline_w = (uint16_t)(w - 12u);
         }
         lcd_rect((uint16_t)(x + (w - underline_w) / 2u),
@@ -2731,11 +2813,11 @@ static void draw_scope_trigger_param_row(uint16_t x, uint16_t y) {
 }
 
 static const char *scope_measure_channel_state_label(uint8_t idx) {
-    return scope_measure_enabled_for(idx, scope_measure_param) ? "ON" : "OFF";
+    return scope_measure_enabled_for(idx, scope_measure_param) ? i18n_str(I18N_STR_ON) : i18n_str(I18N_STR_OFF);
 }
 
 static const char *scope_measure_visible_label(void) {
-    return scope_measure_visible ? "ON" : "OFF";
+    return scope_measure_visible ? i18n_str(I18N_STR_ON) : i18n_str(I18N_STR_OFF);
 }
 
 static void draw_scope_measure_chip(uint16_t x,
@@ -2748,16 +2830,14 @@ static void draw_scope_measure_chip(uint16_t x,
                                     uint8_t selected) {
     uint16_t bg = active ? accent : C_PANEL_2;
     uint16_t fg = active ? C_BG : C_MUTED;
-    uint8_t value_scale = lcd_text_width(value, 2) <= w ? 2u : 1u;
-    uint16_t value_y = (uint16_t)(y + (value_scale == 2u ? 13u : 18u));
+    uint16_t rendered_w = 0;
 
     lcd_rect(x, y, w, 32, bg);
     lcd_rect(x, y, w, 2, accent);
     lcd_text((uint16_t)(x + 6u), (uint16_t)(y + 4u), label, fg, bg, 1);
-    lcd_text_center(x, value_y, w, value, fg, bg, value_scale);
+    draw_chip_value_with_unit(x, y, w, value, fg, bg, &rendered_w);
     if (selected) {
-        uint16_t text_w = lcd_text_width(value, value_scale);
-        uint16_t underline_w = text_w > (uint16_t)(w - 12u) ? (uint16_t)(w - 12u) : text_w;
+        uint16_t underline_w = rendered_w > (uint16_t)(w - 12u) ? (uint16_t)(w - 12u) : rendered_w;
         lcd_rect((uint16_t)(x + (w - underline_w) / 2u),
                  (uint16_t)(y + 29u),
                  underline_w,
@@ -2779,7 +2859,7 @@ static void draw_scope_measure_param_row(uint16_t x, uint16_t y) {
     draw_scope_measure_chip((uint16_t)(x + UI_PARAM_CHIP_W + UI_PARAM_CHIP_GAP),
                             y,
                             UI_PARAM_CHIP_W,
-                            "VALUE",
+                            i18n_str(I18N_STR_PARAM),
                             scope_measure_labels[scope_measure_param],
                             C_SCOPE,
                             ui.scope_measure_menu_sel == SCOPE_MEASURE_MENU_VALUE,
@@ -2795,7 +2875,7 @@ static void draw_scope_measure_param_row(uint16_t x, uint16_t y) {
     draw_scope_measure_chip((uint16_t)(x + (UI_PARAM_CHIP_W + UI_PARAM_CHIP_GAP) * 3u),
                             y,
                             UI_PARAM_CHIP_W,
-                            "MEAS",
+                            i18n_scope_param_label(SCOPE_PARAM_MEASURE),
                             scope_measure_visible_label(),
                             C_SCOPE,
                             ui.scope_measure_menu_sel == SCOPE_MEASURE_MENU_VISIBLE,
@@ -2888,7 +2968,7 @@ static const char *scope_h_pos_label(void) {
         if (ns < 1000u) {
             scope_format_u32(number, ns);
             out = scope_append_text(label, out, sizeof(label), number);
-            out = scope_append_text(label, out, sizeof(label), "NS");
+            out = scope_append_text(label, out, sizeof(label), "ns");
         } else {
             uint32_t us_x10 = (ns + 50u) / 100u;
             scope_format_u32(number, us_x10 / 10u);
@@ -2898,7 +2978,7 @@ static const char *scope_h_pos_label(void) {
                 label[out++] = (char)('0' + us_x10 % 10u);
                 label[out] = 0;
             }
-            out = scope_append_text(label, out, sizeof(label), "US");
+            out = scope_append_text(label, out, sizeof(label), "µs");
         }
     } else if (unit_ns < 100000u) {
         uint32_t us_x10 = (mag * 6u * unit_ns + SCOPE_H_POS_LIMIT * 5u) /
@@ -2910,7 +2990,7 @@ static const char *scope_h_pos_label(void) {
             label[out++] = (char)('0' + us_x10 % 10u);
             label[out] = 0;
         }
-        out = scope_append_text(label, out, sizeof(label), "US");
+        out = scope_append_text(label, out, sizeof(label), "µs");
     } else if (unit_ns < 100000000u) {
         uint32_t ms_x10 = (mag * 6u * (unit_ns / 1000u) + SCOPE_H_POS_LIMIT * 5u) /
             (SCOPE_H_POS_LIMIT * 10u);
@@ -2921,7 +3001,7 @@ static const char *scope_h_pos_label(void) {
             label[out++] = (char)('0' + ms_x10 % 10u);
             label[out] = 0;
         }
-        out = scope_append_text(label, out, sizeof(label), "MS");
+        out = scope_append_text(label, out, sizeof(label), "ms");
     } else {
         uint32_t s_x10 = (mag * 6u * (unit_ns / 1000000u) + SCOPE_H_POS_LIMIT * 5u) /
             (SCOPE_H_POS_LIMIT * 10u);
@@ -2932,7 +3012,7 @@ static const char *scope_h_pos_label(void) {
             label[out++] = (char)('0' + s_x10 % 10u);
             label[out] = 0;
         }
-        out = scope_append_text(label, out, sizeof(label), "S");
+        out = scope_append_text(label, out, sizeof(label), "s");
     }
     (void)out;
     return label;
@@ -3147,7 +3227,7 @@ static void scope_format_cursor_time_pos(char out[12], int16_t value, uint8_t ti
         if (ns < 1000u) {
             scope_format_u32(number, ns);
             n = scope_append_text(out, n, 12, number);
-            n = scope_append_text(out, n, 12, "N");
+            n = scope_append_text(out, n, 12, "ns");
         } else {
             uint32_t us_x10 = (ns + 50u) / 100u;
             if (us_x10 < 1000u) {
@@ -3162,14 +3242,14 @@ static void scope_format_cursor_time_pos(char out[12], int16_t value, uint8_t ti
                 scope_format_u32(number, us_x10 / 10u);
                 n = scope_append_text(out, n, 12, number);
             }
-            n = scope_append_text(out, n, 12, "U");
+            n = scope_append_text(out, n, 12, "µs");
         }
     } else if (unit_ns < 100000u) {
         uint32_t us_x10 = ((uint32_t)mag * SCOPE_X_DIVS * unit_ns + 1275u) / 2550u;
         if (us_x10 >= 1000u) {
             scope_format_u32(number, us_x10 / 10u);
             n = scope_append_text(out, n, 12, number);
-            n = scope_append_text(out, n, 12, "U");
+            n = scope_append_text(out, n, 12, "µs");
             (void)n;
             return;
         }
@@ -3180,13 +3260,13 @@ static void scope_format_cursor_time_pos(char out[12], int16_t value, uint8_t ti
                 out[n++] = (char)('0' + us_x10 % 10u);
                 out[n] = 0;
         }
-        n = scope_append_text(out, n, 12, "U");
+        n = scope_append_text(out, n, 12, "µs");
     } else if (unit_ns < 10000000u) {
         uint32_t ms_x10 = ((uint32_t)mag * SCOPE_X_DIVS * (unit_ns / 1000u) + 1275u) / 2550u;
         if (ms_x10 >= 1000u) {
             scope_format_u32(number, ms_x10 / 10u);
             n = scope_append_text(out, n, 12, number);
-            n = scope_append_text(out, n, 12, "M");
+            n = scope_append_text(out, n, 12, "ms");
             (void)n;
             return;
         }
@@ -3197,13 +3277,13 @@ static void scope_format_cursor_time_pos(char out[12], int16_t value, uint8_t ti
                 out[n++] = (char)('0' + ms_x10 % 10u);
                 out[n] = 0;
         }
-        n = scope_append_text(out, n, 12, "M");
+        n = scope_append_text(out, n, 12, "ms");
     } else {
         uint32_t s_x10 = ((uint32_t)mag * SCOPE_X_DIVS * (unit_ns / 10000000u) + 127u) / 255u;
         if (s_x10 >= 1000u) {
             scope_format_u32(number, s_x10 / 10u);
             n = scope_append_text(out, n, 12, number);
-            n = scope_append_text(out, n, 12, "S");
+            n = scope_append_text(out, n, 12, "s");
             (void)n;
             return;
         }
@@ -3214,7 +3294,7 @@ static void scope_format_cursor_time_pos(char out[12], int16_t value, uint8_t ti
             out[n++] = (char)('0' + s_x10 % 10u);
             out[n] = 0;
         }
-        n = scope_append_text(out, n, 12, "S");
+        n = scope_append_text(out, n, 12, "s");
     }
     (void)n;
 }
@@ -3288,10 +3368,10 @@ static const char *scope_cursor_pos_label(uint8_t idx) {
             float val;
             if (bode_cursor_sub == 1u) {
                 val = 20.0f - (float)scope_cursor_y[idx] * 80.0f / 255.0f;
-                scope_format_signed_float(label[idx], val, "DB");
+                scope_format_signed_float(label[idx], val, "dB");
             } else {
                 val = 180.0f - (float)scope_cursor_y[idx] * 360.0f / 255.0f;
-                scope_format_signed_float(label[idx], val, "DEG");
+                scope_format_signed_float(label[idx], val, "°");
             }
         }
     } else if ((scope_fft_src == 1u || scope_fft_src == 2u) && ui.scope_cursor_mode == SCOPE_CURSOR_TIME) {
@@ -3348,13 +3428,13 @@ static const char *scope_cursor_delta_chip_label(void) {
             float d1 = 20.0f - (float)scope_cursor_y[1] * 80.0f / 255.0f;
             float ddb = d0 > d1 ? d0 - d1 : d1 - d0;
             label[0] = 'D'; label[1] = 'D'; label[2] = ' ';
-            scope_format_signed_float(&label[3], ddb, "DB");
+            scope_format_signed_float(&label[3], ddb, "dB");
         } else {
             float p0 = 180.0f - (float)scope_cursor_y[0] * 360.0f / 255.0f;
             float p1 = 180.0f - (float)scope_cursor_y[1] * 360.0f / 255.0f;
             float ddeg = p0 > p1 ? p0 - p1 : p1 - p0;
             label[0] = 'D'; label[1] = 'P'; label[2] = ' ';
-            scope_format_signed_float(&label[3], ddeg, "DEG");
+            scope_format_signed_float(&label[3], ddeg, "°");
         }
     } else if ((scope_fft_src == 1u || scope_fft_src == 2u) && ui.scope_cursor_mode == SCOPE_CURSOR_TIME) {
         float eff_ns = (float)scope_sample_period_ns();
@@ -3384,7 +3464,7 @@ static void draw_scope_cursor_param_row(uint16_t x, uint16_t y) {
     draw_scope_measure_chip(x,
                             y,
                             UI_PARAM_CHIP_W,
-                            "DELTA",
+                            i18n_str(I18N_STR_DELTA),
                             scope_cursor_delta_chip_label(),
                             C_GRID,
                             0,
@@ -3392,7 +3472,7 @@ static void draw_scope_cursor_param_row(uint16_t x, uint16_t y) {
     draw_scope_measure_chip((uint16_t)(x + UI_PARAM_CHIP_W + UI_PARAM_CHIP_GAP),
                             y,
                             UI_PARAM_CHIP_W,
-                            "CURSOR",
+                            i18n_str(I18N_STR_CURSOR),
                             scope_cursor_chip_label(),
                             C_SCOPE,
                             ui.scope_cursor_menu_sel == SCOPE_CURSOR_MENU_MODE,
@@ -3424,16 +3504,14 @@ static void draw_scope_move_chip(uint16_t x,
     uint16_t accent = scope_channel_color(ui.active_ch);
     uint16_t bg = active ? accent : C_PANEL_2;
     uint16_t fg = active ? C_BG : C_MUTED;
-    uint8_t value_scale = lcd_text_width(value, 2) <= w ? 2u : 1u;
-    uint16_t value_y = (uint16_t)(y + (value_scale == 2u ? 13u : 18u));
+    uint16_t rendered_w = 0;
 
     lcd_rect(x, y, w, 32, bg);
     lcd_rect(x, y, w, 2, accent);
     lcd_text((uint16_t)(x + 6u), (uint16_t)(y + 4u), label, fg, bg, 1);
-    lcd_text_center(x, value_y, w, value, fg, bg, value_scale);
+    draw_chip_value_with_unit(x, y, w, value, fg, bg, &rendered_w);
     if (active) {
-        uint16_t text_w = lcd_text_width(value, value_scale);
-        uint16_t underline_w = text_w > (uint16_t)(w - 12u) ? (uint16_t)(w - 12u) : text_w;
+        uint16_t underline_w = rendered_w > (uint16_t)(w - 12u) ? (uint16_t)(w - 12u) : rendered_w;
         lcd_rect((uint16_t)(x + (w - underline_w) / 2u), (uint16_t)(y + 29u), underline_w, 2, fg);
     }
 }
@@ -3494,7 +3572,7 @@ static void draw_softkeys(void) {
         return;
     }
     const char *f1 = ui.mode == UI_MODE_SCOPE ? scope_display_label() : i18n_gen_param_label(0);
-    const char *f2 = ui.mode == UI_MODE_SCOPE ? "VDIV" : "FREQ";
+    const char *f2 = ui.mode == UI_MODE_SCOPE ? i18n_scope_param_label(SCOPE_PARAM_GAIN) : "FREQ";
     const char *f3 = ui.running ? i18n_str(I18N_STR_RUN) : i18n_str(I18N_STR_HOLD);
     const char *f4 = ui.mode == UI_MODE_SCOPE ? scope_cursor_label() : "FREQ";
     if (ui.mode == UI_MODE_GEN) {
@@ -5160,60 +5238,59 @@ static void scope_format_delta_time(char out[14]) {
     uint8_t dx = x0 > x1 ? (uint8_t)(x0 - x1) : (uint8_t)(x1 - x0);
     uint32_t unit_ns = scope_timebase_unit_ns_value();
     char number[11];
-    uint8_t n;
+    uint8_t n = 0;
 
-    out[0] = 'D';
-    out[1] = 'T';
-    out[2] = ' ';
+    out[n++] = 'D';
+    out[n++] = 'T';
+    out[n++] = ' ';
+    out[n] = 0;
     if (unit_ns < 100u) {
         uint32_t ns = (uint32_t)dx * SCOPE_X_DIVS * 10u * unit_ns / 255u;
         if (ns < 1000u) {
             scope_format_u32(number, ns);
-            scope_text_copy(&out[3], number, 7);
-            n = (uint8_t)(3u + scope_text_len(number));
-            out[n++] = 'N';
-            out[n++] = 'S';
-            out[n] = 0;
+            n = scope_append_text(out, n, 14, number);
+            n = scope_append_text(out, n, 14, "ns");
             return;
         }
         uint32_t us_x10 = (ns + 50u) / 100u;
         scope_format_u32(number, us_x10 / 10u);
-        scope_text_copy(&out[3], number, 7);
-        n = (uint8_t)(3u + scope_text_len(number));
-        out[n++] = '.';
-        out[n++] = (char)('0' + us_x10 % 10u);
-        out[n++] = 'U';
-        out[n++] = 'S';
-        out[n] = 0;
+        n = scope_append_text(out, n, 14, number);
+        n = scope_append_text(out, n, 14, ".");
+        if (n < 13u) {
+            out[n++] = (char)('0' + us_x10 % 10u);
+            out[n] = 0;
+        }
+        n = scope_append_text(out, n, 14, "µs");
     } else if (unit_ns < 100000u) {
         uint32_t us_x10 = ((uint32_t)dx * SCOPE_X_DIVS * unit_ns + 1275u) / 2550u;
         scope_format_u32(number, us_x10 / 10u);
-        scope_text_copy(&out[3], number, 7);
-        n = (uint8_t)(3u + scope_text_len(number));
-        out[n++] = '.';
-        out[n++] = (char)('0' + us_x10 % 10u);
-        out[n++] = 'U';
-        out[n++] = 'S';
-        out[n] = 0;
+        n = scope_append_text(out, n, 14, number);
+        n = scope_append_text(out, n, 14, ".");
+        if (n < 13u) {
+            out[n++] = (char)('0' + us_x10 % 10u);
+            out[n] = 0;
+        }
+        n = scope_append_text(out, n, 14, "µs");
     } else if (unit_ns < 10000000u) {
         uint32_t ms_x10 = ((uint32_t)dx * SCOPE_X_DIVS * (unit_ns / 1000u) + 1275u) / 2550u;
         scope_format_u32(number, ms_x10 / 10u);
-        scope_text_copy(&out[3], number, 7);
-        n = (uint8_t)(3u + scope_text_len(number));
-        out[n++] = '.';
-        out[n++] = (char)('0' + ms_x10 % 10u);
-        out[n++] = 'M';
-        out[n++] = 'S';
-        out[n] = 0;
+        n = scope_append_text(out, n, 14, number);
+        n = scope_append_text(out, n, 14, ".");
+        if (n < 13u) {
+            out[n++] = (char)('0' + ms_x10 % 10u);
+            out[n] = 0;
+        }
+        n = scope_append_text(out, n, 14, "ms");
     } else {
         uint32_t s_x10 = ((uint32_t)dx * SCOPE_X_DIVS * (unit_ns / 10000000u) + 127u) / 255u;
         scope_format_u32(number, s_x10 / 10u);
-        scope_text_copy(&out[3], number, 7);
-        n = (uint8_t)(3u + scope_text_len(number));
-        out[n++] = '.';
-        out[n++] = (char)('0' + s_x10 % 10u);
-        out[n++] = 'S';
-        out[n] = 0;
+        n = scope_append_text(out, n, 14, number);
+        n = scope_append_text(out, n, 14, ".");
+        if (n < 13u) {
+            out[n++] = (char)('0' + s_x10 % 10u);
+            out[n] = 0;
+        }
+        n = scope_append_text(out, n, 14, "s");
     }
 }
 
@@ -5223,48 +5300,48 @@ static void scope_format_delta_level(char out[14]) {
     uint8_t dy = y0 > y1 ? (uint8_t)(y0 - y1) : (uint8_t)(y1 - y0);
     uint32_t mv = (uint32_t)dy * scope_vdiv_mv() * SCOPE_Y_DIVS / 255u;
     char number[11];
-    uint8_t n;
+    uint8_t n = 0;
 
-    out[0] = 'D';
-    out[1] = 'V';
-    out[2] = ' ';
+    out[n++] = 'D';
+    out[n++] = 'V';
+    out[n++] = ' ';
+    out[n] = 0;
     if (mv < 1000u) {
         scope_format_u32(number, mv);
-        scope_text_copy(&out[3], number, 7);
-        n = (uint8_t)(3u + scope_text_len(number));
-        out[n++] = 'M';
-        out[n++] = 'V';
-        out[n] = 0;
+        n = scope_append_text(out, n, 14, number);
+        n = scope_append_text(out, n, 14, "mV");
     } else {
         uint32_t v_x10 = (mv + 50u) / 100u;
         scope_format_u32(number, v_x10 / 10u);
-        scope_text_copy(&out[3], number, 7);
-        n = (uint8_t)(3u + scope_text_len(number));
-        out[n++] = '.';
-        out[n++] = (char)('0' + v_x10 % 10u);
-        out[n++] = 'V';
-        out[n] = 0;
+        n = scope_append_text(out, n, 14, number);
+        n = scope_append_text(out, n, 14, ".");
+        if (n < 13u) {
+            out[n++] = (char)('0' + v_x10 % 10u);
+            out[n] = 0;
+        }
+        n = scope_append_text(out, n, 14, "V");
     }
 }
 
 static void scope_format_mv(char out[10], uint32_t mv, const char *suffix) {
     char number[11];
-    uint8_t n;
+    uint8_t n = 0;
 
+    out[0] = 0;
     if (mv < 1000u) {
         scope_format_u32(number, mv);
-        scope_text_copy(out, number, 6);
-        n = scope_text_len(number);
-        out[n++] = 'M';
-        out[n++] = 'V';
+        n = scope_append_text(out, n, 10, number);
+        n = scope_append_text(out, n, 10, "mV");
     } else {
         uint32_t v_x10 = (mv + 50u) / 100u;
         scope_format_u32(number, v_x10 / 10u);
-        scope_text_copy(out, number, 6);
-        n = scope_text_len(number);
-        out[n++] = '.';
-        out[n++] = (char)('0' + v_x10 % 10u);
-        out[n++] = 'V';
+        n = scope_append_text(out, n, 10, number);
+        n = scope_append_text(out, n, 10, ".");
+        if (n < 9u) {
+            out[n++] = (char)('0' + v_x10 % 10u);
+            out[n] = 0;
+        }
+        n = scope_append_text(out, n, 10, "V");
     }
     while (*suffix && n < 9u) {
         out[n++] = *suffix++;
@@ -5330,7 +5407,7 @@ static void scope_format_freq(char out[10]) {
         scope_text_copy(out, number, 6);
         n = scope_text_len(number);
         out[n++] = 'H';
-        out[n++] = 'Z';
+        out[n++] = 'z';
         out[n] = 0;
     } else {
         uint32_t khz_x10 = (hz + 50u) / 100u;
@@ -5339,9 +5416,9 @@ static void scope_format_freq(char out[10]) {
         n = scope_text_len(number);
         out[n++] = '.';
         out[n++] = (char)('0' + khz_x10 % 10u);
-        out[n++] = 'K';
+        out[n++] = 'k';
         out[n++] = 'H';
-        out[n++] = 'Z';
+        out[n++] = 'z';
         out[n] = 0;
     }
 }
@@ -5596,13 +5673,13 @@ static void scope_format_frequency_reading(char out[12], uint32_t hz) {
 
     if (hz < 1000u) {
         value_x10 = hz * 10u;
-        unit = "HZ";
+        unit = "Hz";
     } else if (hz < 1000000u) {
         value_x10 = (hz + 50u) / 100u;
-        unit = "KHZ";
+        unit = "kHz";
     } else {
         value_x10 = (hz + 50000u) / 100000u;
-        unit = "MHZ";
+        unit = "MHz";
     }
     scope_format_u32(number, value_x10 / 10u);
     scope_text_copy(out, number, 8);
@@ -5657,6 +5734,8 @@ static void draw_scope_measure_text(uint16_t left,
                                     uint16_t bg,
                                     uint8_t align_right) {
     char value[12];
+    char num[16];
+    char unit[16];
     const char *label;
     uint16_t width = right > left ? (uint16_t)(right - left) : 0u;
     uint16_t label_w;
@@ -5671,21 +5750,41 @@ static void draw_scope_measure_text(uint16_t left,
     }
     label = scope_measure_labels[measure];
     scope_measure_value_for(value, idx, measure);
+    split_value_unit(value, num, unit, sizeof(num));
 
     label_w = lcd_text_width(label, 1);
-    value_w = lcd_text_width(value, value_scale);
-    total_w = (uint16_t)(label_w + 4u + value_w);
-    if (total_w > width) {
-        value_scale = 1;
+    if (unit[0]) {
+        uint16_t num_w = lcd_text_width(num, value_scale);
+        uint16_t unit_w = lcd_text_width(unit, 1);
+        value_w = (uint16_t)(num_w + 1u + unit_w);
+        total_w = (uint16_t)(label_w + 4u + value_w);
+        if (total_w > width) {
+            value_scale = 1;
+            num_w = lcd_text_width(num, value_scale);
+            value_w = (uint16_t)(num_w + 1u + unit_w);
+            total_w = (uint16_t)(label_w + 4u + value_w);
+        }
+        if (align_right && total_w < width) {
+            x = (uint16_t)(right - total_w);
+        }
+        lcd_text_transparent(x, (uint16_t)(y + (value_scale == 2u ? 4u : 0u)), label, color, 1);
+        uint16_t num_x = (uint16_t)(x + label_w + 4u);
+        lcd_text_transparent(num_x, y, num, color, value_scale);
+        lcd_text_transparent((uint16_t)(num_x + num_w + 1u), (uint16_t)(y + (value_scale == 2u ? 6u : 0u)), unit, color, 1);
+    } else {
         value_w = lcd_text_width(value, value_scale);
         total_w = (uint16_t)(label_w + 4u + value_w);
+        if (total_w > width) {
+            value_scale = 1;
+            value_w = lcd_text_width(value, value_scale);
+            total_w = (uint16_t)(label_w + 4u + value_w);
+        }
+        if (align_right && total_w < width) {
+            x = (uint16_t)(right - total_w);
+        }
+        lcd_text_transparent(x, (uint16_t)(y + (value_scale == 2u ? 4u : 0u)), label, color, 1);
+        lcd_text_transparent((uint16_t)(x + label_w + 4u), y, value, color, value_scale);
     }
-    if (align_right && total_w < width) {
-        x = (uint16_t)(right - total_w);
-    }
-
-    lcd_text_transparent(x, (uint16_t)(y + (value_scale == 2u ? 4u : 0u)), label, color, 1);
-    lcd_text_transparent((uint16_t)(x + label_w + 4u), y, value, color, value_scale);
 }
 
 static uint8_t scope_measure_enabled_count(uint8_t ch) {

@@ -99,6 +99,8 @@ static const char *const i18n_tbl_strings[LANG_COUNT][I18N_STR_TOTAL_COUNT] = {
         [I18N_STR_ZERO]               = "ZERO",
         [I18N_STR_BASELINE_CAL]       = "BASELINE CAL",
         [I18N_STR_REMOVE_PROBE_WAIT]  = "REMOVE PROBE  WAIT",
+        [I18N_STR_DELTA]              = "DELTA",
+        [I18N_STR_CURSOR]             = "CURSOR",
 
         [I18N_STR_SWEEP_MODULATION]   = "SWEEP AND MODULATION",
         [I18N_STR_SWEEP_MODE]         = "SWEEP MODE:",
@@ -147,7 +149,7 @@ static const char *const i18n_tbl_strings[LANG_COUNT][I18N_STR_TOTAL_COUNT] = {
         [I18N_STR_START]              = "СТАРТ",
         [I18N_STR_STOP]               = "СТОП",
         [I18N_STR_VALUE]              = "ЗНАЧЕННЯ",
-        [I18N_STR_PARAM]              = "ПАРАМЕТР",
+        [I18N_STR_PARAM]              = "ПАРАМ",
         [I18N_STR_OFF]                = "ВИМК",
         [I18N_STR_ON]                 = "УВІМК",
         [I18N_STR_WAIT]               = "ЧЕКАЙТЕ",
@@ -200,6 +202,8 @@ static const char *const i18n_tbl_strings[LANG_COUNT][I18N_STR_TOTAL_COUNT] = {
         [I18N_STR_ZERO]               = "НУЛЬ",
         [I18N_STR_BASELINE_CAL]       = "КАЛІБРУВАННЯ",
         [I18N_STR_REMOVE_PROBE_WAIT]  = "ЗНІМІТЬ ЩУП  ЧЕКАЙТЕ",
+        [I18N_STR_DELTA]              = "ДЕЛЬТА",
+        [I18N_STR_CURSOR]             = "КУРСОР",
 
         [I18N_STR_SWEEP_MODULATION]   = "РОЗГОРТКА ТА МОДУЛЯЦІЯ",
         [I18N_STR_SWEEP_MODE]         = "РЕЖИМ РОЗГОРТКИ:",
